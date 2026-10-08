@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.venv/
+runs/*
+!runs/.gitkeep
+checkpoints/*
+!checkpoints/.gitkeep
+samples/
+data/mouse_cardiac/*
+!data/mouse_cardiac/DATASET_SOURCE.md
+!data/mouse_cardiac/LICENSE
+*.pt
+*.pth
+wandb/
+.ipynb_checkpoints/

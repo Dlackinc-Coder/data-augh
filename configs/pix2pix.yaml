@@ -1,0 +1,26 @@
+seed: 42
+ckpt_dir: checkpoints/pix2pix
+
+dataset:
+  root: data/mouse_cardiac
+  tile_size: 512
+  tiles_per_image: 4
+
+generator:
+  input_nc: 4
+  output_nc: 3
+  ngf: 64
+  n_downsamples: 7
+
+discriminator:
+  ndf: 64
+  n_layers: 3
+
+train:
+  batch_size: 1
+  lr_g: 2.0e-4
+  lr_d: 2.0e-4
+  lambda_l1: 100.0
+  epochs: 200
+  sample_every: 200
+  ckpt_every: 10

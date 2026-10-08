@@ -1,0 +1,10 @@
+torch>=2.1
+torchvision
+segmentation-models-pytorch
+albumentations
+opencv-python
+numpy
+pillow
+pyyaml
+tensorboard
+tqdm
