@@ -10,6 +10,15 @@ CLASS_COLORS = np.array([
     [255, 0, 0],      # 3 IS rojo
 ], dtype=np.uint8)
 
+OVERLAY_COLORS = np.array([
+    [0, 0, 0],          # 0 background (invisible)
+    [0, 200, 200],      # 1 LV viable cyan
+    [255, 220, 0],      # 2 AAR riesgo amarillo
+    [255, 40, 40],      # 3 IS infarto rojo
+], dtype=np.uint8)
+
+OVERLAY_ALPHA = [0.0, 0.35, 0.40, 0.50]
+
 
 def dice_multiclass(logits, targets, eps=1e-6, ignore_index=None):
     probs = torch.softmax(logits, dim=1)
@@ -66,29 +75,45 @@ def make_overlay(img_t, gt_mask, pred_mask, pad=4):
     return row
 
 
+def make_overlay_1panel(img_t, pred_mask):
+    orig = denorm_img(img_t).astype(np.float32)
+    alpha_map = np.array(OVERLAY_ALPHA, dtype=np.float32)[pred_mask]
+    color_map = OVERLAY_COLORS[np.clip(pred_mask, 0, 3)].astype(np.float32)
+    out = orig * (1 - alpha_map[..., None]) + color_map * alpha_map[..., None]
+    return np.clip(out, 0, 255).astype(np.uint8)
+
+
 @torch.no_grad()
 def evaluate(model, loader, device, half=True, save_overlays=False,
-             overlay_dir=None, max_overlays=64):
+             overlay_dir=None, save_1panel=False, panel_dir=None,
+             max_overlays=64):
     model.eval()
     dices, ious = [], []
     idx = 0
     if save_overlays and overlay_dir:
         os.makedirs(overlay_dir, exist_ok=True)
+    if save_1panel and panel_dir:
+        os.makedirs(panel_dir, exist_ok=True)
     for imgs, masks in loader:
         imgs, masks = imgs.to(device), masks.to(device)
         with torch.cuda.amp.autocast(enabled=half):
             logits = model(imgs)
         dices.append(dice_multiclass(logits.float(), masks))
         ious.append(iou_multiclass(logits.float(), masks))
-        if save_overlays and overlay_dir:
+        if (save_overlays or save_1panel) and idx < max_overlays:
             preds = logits.float().argmax(dim=1)
             for b in range(imgs.shape[0]):
                 if idx >= max_overlays:
                     break
-                ov = make_overlay(imgs[b], masks[b].cpu().numpy(),
-                                  preds[b].cpu().numpy())
-                Image.fromarray(ov).save(
-                    os.path.join(overlay_dir, f"overlay_{idx:03d}.png"))
+                if save_overlays and overlay_dir:
+                    ov = make_overlay(imgs[b], masks[b].cpu().numpy(),
+                                      preds[b].cpu().numpy())
+                    Image.fromarray(ov).save(
+                        os.path.join(overlay_dir, f"overlay_{idx:03d}.png"))
+                if save_1panel and panel_dir:
+                    ov1 = make_overlay_1panel(imgs[b], preds[b].cpu().numpy())
+                    Image.fromarray(ov1).save(
+                        os.path.join(panel_dir, f"panel_{idx:03d}.png"))
                 idx += 1
     return sum(dices) / len(dices), sum(ious) / len(ious)
 
@@ -100,7 +125,11 @@ if __name__ == "__main__":
     from dataset import make_loaders
     from seg_model import build_model
 
-    cfg = load_cfg(sys.argv[1] if len(sys.argv) > 1 else "configs/seg.yaml")
+    args = sys.argv[1:]
+    save_1panel = "--save-1panel" in args
+    args = [a for a in args if a != "--save-1panel"]
+
+    cfg = load_cfg(args[0] if args else "configs/seg.yaml")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     _, _, test_dl = make_loaders(cfg)
     model = build_model(cfg).to(device)
@@ -110,8 +139,13 @@ if __name__ == "__main__":
     model.load_state_dict(ckpt["model"])
 
     overlay_dir = os.path.join(PROJECT_ROOT, "runs", "test_overlays")
+    panel_dir = os.path.join(PROJECT_ROOT, "runs", "test_overlays_1panel")
     d, i = evaluate(model, test_dl, device,
-                    save_overlays=True, overlay_dir=overlay_dir)
+                    save_overlays=True, overlay_dir=overlay_dir,
+                    save_1panel=save_1panel,
+                    panel_dir=panel_dir if save_1panel else None)
     print(f"TEST | dice {d:.4f} | iou {i:.4f} "
           f"(ckpt epoch {ckpt.get('epoch')})")
-    print(f"overlays guardados en: {overlay_dir}/")
+    print(f"overlays 3 paneles: {overlay_dir}/")
+    if save_1panel:
+        print(f"overlays 1 panel: {panel_dir}/")
