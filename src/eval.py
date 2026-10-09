@@ -86,36 +86,43 @@ def make_overlay_1panel(img_t, pred_mask):
 @torch.no_grad()
 def evaluate(model, loader, device, half=True, save_overlays=False,
              overlay_dir=None, save_1panel=False, panel_dir=None,
-             max_overlays=64):
+             max_overlays=64, min_tissue_ratio=0.05):
     model.eval()
     dices, ious = [], []
-    idx = 0
-    if save_overlays and overlay_dir:
-        os.makedirs(overlay_dir, exist_ok=True)
-    if save_1panel and panel_dir:
-        os.makedirs(panel_dir, exist_ok=True)
+    candidates = []
     for imgs, masks in loader:
         imgs, masks = imgs.to(device), masks.to(device)
         with torch.cuda.amp.autocast(enabled=half):
             logits = model(imgs)
         dices.append(dice_multiclass(logits.float(), masks))
         ious.append(iou_multiclass(logits.float(), masks))
-        if (save_overlays or save_1panel) and idx < max_overlays:
+        if save_overlays or save_1panel:
             preds = logits.float().argmax(dim=1)
             for b in range(imgs.shape[0]):
-                if idx >= max_overlays:
-                    break
-                if save_overlays and overlay_dir:
-                    ov = make_overlay(imgs[b], masks[b].cpu().numpy(),
-                                      preds[b].cpu().numpy())
-                    Image.fromarray(ov).save(
-                        os.path.join(overlay_dir, f"overlay_{idx:03d}.png"))
-                if save_1panel and panel_dir:
-                    ov1 = make_overlay_1panel(imgs[b], preds[b].cpu().numpy())
-                    Image.fromarray(ov1).save(
-                        os.path.join(panel_dir, f"panel_{idx:03d}.png"))
-                idx += 1
-    return sum(dices) / len(dices), sum(ious) / len(ious)
+                mask_np = masks[b].cpu().numpy()
+                tissue = float((mask_np != 0).mean())
+                if tissue >= min_tissue_ratio:
+                    candidates.append(
+                        (tissue, imgs[b].cpu(), mask_np,
+                         preds[b].cpu().numpy()))
+
+    if save_overlays and overlay_dir:
+        os.makedirs(overlay_dir, exist_ok=True)
+    if save_1panel and panel_dir:
+        os.makedirs(panel_dir, exist_ok=True)
+
+    candidates.sort(key=lambda c: -c[0])
+    for i, (tissue, img_t, gt, pred) in enumerate(candidates[:max_overlays]):
+        if save_overlays and overlay_dir:
+            ov = make_overlay(img_t, gt, pred)
+            Image.fromarray(ov).save(
+                os.path.join(overlay_dir, f"overlay_{i:03d}.png"))
+        if save_1panel and panel_dir:
+            ov1 = make_overlay_1panel(img_t, pred)
+            Image.fromarray(ov1).save(
+                os.path.join(panel_dir, f"panel_{i:03d}.png"))
+
+    return sum(dices) / len(dices), sum(ious) / len(ious), len(candidates)
 
 
 if __name__ == "__main__":
@@ -128,6 +135,11 @@ if __name__ == "__main__":
     args = sys.argv[1:]
     save_1panel = "--save-1panel" in args
     args = [a for a in args if a != "--save-1panel"]
+    min_tissue = 0.05
+    for a in list(args):
+        if a.startswith("--min-tissue="):
+            min_tissue = float(a.split("=")[1])
+            args.remove(a)
 
     cfg = load_cfg(args[0] if args else "configs/seg.yaml")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -140,12 +152,15 @@ if __name__ == "__main__":
 
     overlay_dir = os.path.join(PROJECT_ROOT, "runs", "test_overlays")
     panel_dir = os.path.join(PROJECT_ROOT, "runs", "test_overlays_1panel")
-    d, i = evaluate(model, test_dl, device,
-                    save_overlays=True, overlay_dir=overlay_dir,
-                    save_1panel=save_1panel,
-                    panel_dir=panel_dir if save_1panel else None)
+    d, i, n_cand = evaluate(model, test_dl, device,
+                             save_overlays=True, overlay_dir=overlay_dir,
+                             save_1panel=save_1panel,
+                             panel_dir=panel_dir if save_1panel else None,
+                             min_tissue_ratio=min_tissue)
     print(f"TEST | dice {d:.4f} | iou {i:.4f} "
           f"(ckpt epoch {ckpt.get('epoch')})")
+    print(f"tiles con tejido >= {min_tissue:.0%}: {n_cand} "
+          f"-> guardados {min(64, n_cand)}")
     print(f"overlays 3 paneles: {overlay_dir}/")
     if save_1panel:
         print(f"overlays 1 panel: {panel_dir}/")
