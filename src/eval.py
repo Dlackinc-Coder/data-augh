@@ -21,8 +21,12 @@ def dice_multiclass(logits, targets, eps=1e-6, ignore_index=None):
             continue
         p = (pred == c).float()
         g = (targets == c).float()
+        if p.sum() + g.sum() == 0:
+            continue
         inter = (p * g).sum()
         dices.append((2 * inter + eps) / (p.sum() + g.sum() + eps))
+    if not dices:
+        return 0.0
     return torch.stack(dices).mean().item()
 
 
@@ -33,7 +37,11 @@ def iou_multiclass(logits, targets, eps=1e-6):
     for c in range(num_classes):
         p = (pred == c).float()
         g = (targets == c).float()
+        if p.sum() + g.sum() == 0:
+            continue
         ious.append(((p * g).sum()) / ((p + g).sum() - (p * g).sum() + eps))
+    if not ious:
+        return 0.0
     return torch.stack(ious).mean().item()
 
 
