@@ -1,0 +1,66 @@
+{
+  "experiment": "exp_litemedsam",
+  "model_name": "LiteMedSAM (TinyViT + custom decoder)",
+  "status": "completed",
+  "architecture": {
+    "type": "litemedsam",
+    "encoder": "TinyViT (distilled from MedSAM ViT)",
+    "encoder_pretrained": "lite_medsam.pth (SAM -> MedSAM 1.5M medical -> TinyViT distillation)",
+    "decoder": "3x Conv-BN-GELU + classifier (custom semantic head)",
+    "input_resolution": "512x512 (resized to 256x256 for TinyViT)",
+    "num_classes": 4,
+    "classes": ["background", "LV", "AAR", "IS"],
+    "freeze_encoder_epochs": 15,
+    "params_millions": 6.11,
+    "encoder_params_millions": 5.73,
+    "decoder_params_millions": 0.39
+  },
+  "training": {
+    "epochs": 100,
+    "best_epoch": 97,
+    "tile_size": 512,
+    "tiles_per_image": 8,
+    "batch_size": 4,
+    "grad_accum": 2,
+    "effective_batch": 8,
+    "optimizer": "adamw",
+    "lr": 3e-4,
+    "weight_decay": 1e-4,
+    "scheduler": "cosine",
+    "loss": "dice_ce",
+    "class_weights": [0.1, 1.0, 1.0, 1.0],
+    "amp": true,
+    "time_per_epoch_sec": 99,
+    "total_time_hours": 2.75
+  },
+  "dataset": {
+    "name": "mouse-cardiac-dataset",
+    "source": "wwz4416 (Apache-2.0)",
+    "split": {"train": 171, "val": 35, "test": 37},
+    "image_size": "6000x4000",
+    "mask_classes": 4
+  },
+  "results": {
+    "test_dice": 0.8521,
+    "test_iou": 0.8144,
+    "best_val_dice": 0.8442,
+    "best_val_epoch": 97,
+    "tiles_with_tissue": 35,
+    "valid_for_comparison": true
+  },
+  "artifacts": {
+    "checkpoints": ["best.pt (epoch 97)", "last.pt (epoch 100)"],
+    "overlays_3panel": 35,
+    "overlays_1panel": 35,
+    "tensorboard_logs": true
+  },
+  "hardware": {
+    "gpu": "RTX 4060 8GB",
+    "cuda": "12.1"
+  },
+  "comparison": {
+    "unet_a_test_dice": 0.9400,
+    "litemedsam_c_test_dice": 0.8521,
+    "delta": -0.0879
+  }
+}

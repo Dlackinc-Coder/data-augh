@@ -1,0 +1,54 @@
+{
+  "experiment": "exp_unet_efficientnet_b0",
+  "model_name": "U-Net + EfficientNet-B0",
+  "architecture": {
+    "type": "unet",
+    "encoder": "efficientnet-b0",
+    "encoder_weights": "imagenet",
+    "num_classes": 4,
+    "classes": ["background", "LV", "AAR", "IS"]
+  },
+  "training": {
+    "epochs": 100,
+    "best_epoch": 49,
+    "tile_size": 512,
+    "tiles_per_image": 8,
+    "batch_size": 2,
+    "grad_accum": 4,
+    "effective_batch": 8,
+    "optimizer": "adamw",
+    "lr": 3e-4,
+    "weight_decay": 1e-4,
+    "scheduler": "cosine_annealing",
+    "loss": "crossentropy",
+    "amp": true,
+    "num_workers": 4
+  },
+  "dataset": {
+    "name": "mouse-cardiac-dataset",
+    "source": "wwz4416 (Apache-2.0)",
+    "split": {"train": 171, "val": 35, "test": 37},
+    "image_size": "6000x4000",
+    "mask_classes": 4
+  },
+  "results": {
+    "test_dice": 0.9400,
+    "test_iou": 0.9264,
+    "best_val_dice": 0.9406,
+    "best_val_epoch": 49,
+    "total_time_hours": 6.2,
+    "time_per_epoch_sec": 365,
+    "vram_peak_gb": 1.0,
+    "params_millions": 6.3
+  },
+  "artifacts": {
+    "checkpoints": ["best.pt", "last.pt"],
+    "overlays_3panel": 64,
+    "overlays_1panel": 64,
+    "tensorboard_logs": true
+  },
+  "hardware": {
+    "gpu": "RTX 4060 8GB",
+    "cuda": "12.1"
+  }
+}

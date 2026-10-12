@@ -1,0 +1,80 @@
+{
+  "experiment": "exp_segformer_mit_b2",
+  "model_name": "SegFormer MiT-B2",
+  "status": "WARNING: trained with corrupted masks - retrain required",
+  "architecture": {
+    "type": "segformer",
+    "encoder": "mit_b2",
+    "pretrained": "nvidia/segformer-b2-finetuned-ade-512-512",
+    "num_classes": 4,
+    "classes": ["background", "LV", "AAR", "IS"],
+    "freeze_encoder_epochs": 15
+  },
+  "training": {
+    "epochs": 100,
+    "evaluated_checkpoint": "last.pt (epoch 100)",
+    "best_checkpoint_issue": "best.pt selected at epoch 1 due to broken val_dice metric",
+    "tile_size": 512,
+    "tiles_per_image": 8,
+    "batch_size": 2,
+    "grad_accum": 4,
+    "effective_batch": 8,
+    "optimizer": "adamw",
+    "lr": 3e-4,
+    "weight_decay": 1e-4,
+    "scheduler": "cosine",
+    "loss": "dice_ce",
+    "class_weights": [0.1, 1.0, 1.0, 1.0],
+    "amp": true,
+    "time_per_epoch_sec": 86
+  },
+  "dataset": {
+    "name": "mouse-cardiac-dataset",
+    "source": "wwz4416 (Apache-2.0)",
+    "split": {"train": 171, "val": 35, "test": 37},
+    "image_size": "6000x4000"
+  },
+  "results": {
+    "test_dice": 0.7873,
+    "test_iou": 0.7837,
+    "tiles_with_tissue": 35,
+    "valid_for_comparison": false,
+    "reason_invalid": "Model trained with broken mask loading - all masks were background class"
+  },
+  "bugs_found": [
+    {
+      "id": "mask_conversion",
+      "description": "dataset.py used mask/255*3 instead of mask directly, mapping all mask values to 0",
+      "fixed": true,
+      "file": "src/dataset.py"
+    },
+    {
+      "id": "val_dice_batch",
+      "description": "dice_multiclass per-batch only averages classes present in batch, always shows 1.0",
+      "fixed": true,
+      "file": "src/eval.py"
+    },
+    {
+      "id": "eval_logits_interpolation",
+      "description": "eval.py get_logits did not interpolate SegFormer 128x128 output to 512x512",
+      "fixed": true,
+      "file": "src/eval.py"
+    },
+    {
+      "id": "ckpt_dir_config",
+      "description": "load_cfg did not read output.ckpt_dir nested key, saved to wrong directory",
+      "fixed": true,
+      "file": "src/train_seg.py"
+    }
+  ],
+  "artifacts": {
+    "checkpoints": ["best.pt (epoch 1 - invalid)", "last.pt (epoch 100 - evaluated)"],
+    "overlays_3panel": 35,
+    "overlays_1panel": 35,
+    "tensorboard_logs": true
+  },
+  "hardware": {
+    "gpu": "RTX 4060 8GB",
+    "cuda": "12.1"
+  }
+}

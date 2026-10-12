@@ -1,0 +1,34 @@
+model:
+  name: "segformer"
+  encoder: "mit_b2"
+  pretrained: true
+  freeze_encoder_epochs: 15
+  classes: 4
+
+dataset:
+  root: "data/mouse_cardiac"
+  tile_size: 1024
+  tiles_per_image: 8
+
+train:
+  epochs: 100
+  optimizer: "adamw"
+  lr: 0.0003
+  weight_decay: 0.0001
+  scheduler: "cosine"
+  amp: true
+  precision: "bf16"
+  gradient_checkpointing: false
+  batch_size: 1
+  grad_accum: 8
+  num_workers: 4
+  log_dir: "runs/exp_segformer_mit_b2_1024"
+
+loss:
+  type: "dice_ce"
+  dice_weight: 1.0
+  ce_weight: 1.0
+  class_weights: [0.1, 1.0, 1.0, 1.0]
+
+output:
+  ckpt_dir: "checkpoints/exp_segformer_mit_b2_1024"

@@ -1,5 +1,6 @@
 import os
 import torch
+import torch.nn.functional as F
 import numpy as np
 from PIL import Image
 
@@ -83,6 +84,18 @@ def make_overlay_1panel(img_t, pred_mask):
     return np.clip(out, 0, 255).astype(np.uint8)
 
 
+def get_logits(model, imgs):
+    """Extract logits from model output (handles different model types)."""
+    out = model(imgs)
+    if hasattr(out, 'logits'):
+        logits = out.logits  # HF SegFormer
+    else:
+        logits = out  # smp.Unet or raw tensor
+    if logits.shape[-2:] != imgs.shape[-2:]:
+        logits = F.interpolate(logits, size=imgs.shape[-2:], mode="bilinear", align_corners=False)
+    return logits
+
+
 @torch.no_grad()
 def evaluate(model, loader, device, half=True, save_overlays=False,
              overlay_dir=None, save_1panel=False, panel_dir=None,
@@ -92,8 +105,8 @@ def evaluate(model, loader, device, half=True, save_overlays=False,
     candidates = []
     for imgs, masks in loader:
         imgs, masks = imgs.to(device), masks.to(device)
-        with torch.cuda.amp.autocast(enabled=half):
-            logits = model(imgs)
+        with torch.amp.autocast('cuda', enabled=half):
+            logits = get_logits(model, imgs)
         dices.append(dice_multiclass(logits.float(), masks))
         ious.append(iou_multiclass(logits.float(), masks))
         if save_overlays or save_1panel:
@@ -108,8 +121,14 @@ def evaluate(model, loader, device, half=True, save_overlays=False,
 
     if save_overlays and overlay_dir:
         os.makedirs(overlay_dir, exist_ok=True)
+        for f in os.listdir(overlay_dir):
+            if f.endswith(".png"):
+                os.remove(os.path.join(overlay_dir, f))
     if save_1panel and panel_dir:
         os.makedirs(panel_dir, exist_ok=True)
+        for f in os.listdir(panel_dir):
+            if f.endswith(".png"):
+                os.remove(os.path.join(panel_dir, f))
 
     candidates.sort(key=lambda c: -c[0])
     for i, (tissue, img_t, gt, pred) in enumerate(candidates[:max_overlays]):
@@ -136,16 +155,26 @@ if __name__ == "__main__":
     save_1panel = "--save-1panel" in args
     args = [a for a in args if a != "--save-1panel"]
     min_tissue = 0.05
+    sampling_override = None
+    ckpt_override = None
     for a in list(args):
         if a.startswith("--min-tissue="):
             min_tissue = float(a.split("=")[1])
             args.remove(a)
+        elif a.startswith("--sampling="):
+            sampling_override = a.split("=")[1]
+            args.remove(a)
+        elif a.startswith("--ckpt="):
+            ckpt_override = a.split("=", 1)[1]
+            args.remove(a)
 
     cfg = load_cfg(args[0] if args else "configs/seg.yaml")
+    if sampling_override:
+        cfg.setdefault("dataset", {}).setdefault("sampling", {})["strategy"] = sampling_override
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     _, _, test_dl = make_loaders(cfg)
     model = build_model(cfg).to(device)
-    ckpt = torch.load(cfg.get("ckpt_path",
+    ckpt = torch.load(ckpt_override or cfg.get("ckpt_path",
                               os.path.join(cfg["ckpt_dir"], "best.pt")),
                       map_location=device, weights_only=False)
     model.load_state_dict(ckpt["model"])

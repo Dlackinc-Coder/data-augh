@@ -13,3 +13,5 @@ data/mouse_cardiac/*
 *.pth
 wandb/
 .ipynb_checkpoints/
+MedSAM/
+experiments/*/checkpoints/

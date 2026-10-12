@@ -1,0 +1,121 @@
+/home/gamaliel/miniconda/envs/mioaug/lib/python3.11/site-packages/timm/models/layers/__init__.py:49: FutureWarning: Importing from timm.models.layers is deprecated, please import via timm.layers
+  warnings.warn(f"Importing from {__name__} is deprecated, please import via timm.layers", FutureWarning)
+/home/gamaliel/miniconda/envs/mioaug/lib/python3.11/site-packages/timm/models/registry.py:4: FutureWarning: Importing from timm.models.registry is deprecated, please import via timm.models
+  warnings.warn(f"Importing from {__name__} is deprecated, please import via timm.models", FutureWarning)
+[LiteMedSAM] Loaded encoder weights: 298 tensors, missing=0, unexpected=0
+epoch 001 | train 1.6806 | val_loss 1.3556 | val_dice 0.5921 | lr 3.00e-04 | 99.6s
+  -> best checkpoint (dice 0.5921)
+epoch 002 | train 1.2204 | val_loss 1.0792 | val_dice 0.6395 | lr 3.00e-04 | 98.7s
+  -> best checkpoint (dice 0.6395)
+epoch 003 | train 0.9768 | val_loss 0.9412 | val_dice 0.5108 | lr 3.00e-04 | 98.4s
+epoch 004 | train 0.8505 | val_loss 1.1304 | val_dice 0.4746 | lr 3.00e-04 | 98.4s
+epoch 005 | train 0.8172 | val_loss 0.7360 | val_dice 0.7861 | lr 3.00e-04 | 98.6s
+  -> best checkpoint (dice 0.7861)
+epoch 006 | train 0.7507 | val_loss 0.7910 | val_dice 0.6300 | lr 2.99e-04 | 98.6s
+epoch 007 | train 0.7721 | val_loss 0.7499 | val_dice 0.7335 | lr 2.99e-04 | 98.5s
+epoch 008 | train 0.7393 | val_loss 0.7236 | val_dice 0.7345 | lr 2.99e-04 | 99.1s
+epoch 009 | train 0.7399 | val_loss 0.6798 | val_dice 0.8056 | lr 2.99e-04 | 98.5s
+  -> best checkpoint (dice 0.8056)
+epoch 010 | train 0.7211 | val_loss 0.8746 | val_dice 0.4963 | lr 2.98e-04 | 98.5s
+epoch 011 | train 0.7080 | val_loss 0.7006 | val_dice 0.7771 | lr 2.98e-04 | 98.5s
+epoch 012 | train 0.7071 | val_loss 0.6852 | val_dice 0.7246 | lr 2.97e-04 | 98.3s
+epoch 013 | train 0.7111 | val_loss 0.7559 | val_dice 0.5484 | lr 2.97e-04 | 98.5s
+epoch 014 | train 0.6887 | val_loss 0.6716 | val_dice 0.7941 | lr 2.96e-04 | 98.4s
+epoch 015 | train 0.6819 | val_loss 0.6879 | val_dice 0.8061 | lr 2.96e-04 | 98.5s
+  -> best checkpoint (dice 0.8061)
+  -> Unfreezing encoder at epoch 16
+epoch 016 | train 0.6754 | val_loss 0.6505 | val_dice 0.7793 | lr 2.95e-04 | 98.5s
+epoch 017 | train 0.6622 | val_loss 0.6479 | val_dice 0.8089 | lr 2.95e-04 | 98.3s
+  -> best checkpoint (dice 0.8089)
+epoch 018 | train 0.6610 | val_loss 0.6338 | val_dice 0.8191 | lr 2.94e-04 | 98.8s
+  -> best checkpoint (dice 0.8191)
+epoch 019 | train 0.6580 | val_loss 0.6518 | val_dice 0.6893 | lr 2.93e-04 | 98.6s
+epoch 020 | train 0.6615 | val_loss 0.6423 | val_dice 0.8131 | lr 2.93e-04 | 99.3s
+epoch 021 | train 0.6882 | val_loss 0.6574 | val_dice 0.7040 | lr 2.92e-04 | 98.6s
+epoch 022 | train 0.6779 | val_loss 0.6423 | val_dice 0.7965 | lr 2.91e-04 | 99.1s
+epoch 023 | train 0.6385 | val_loss 0.6362 | val_dice 0.7823 | lr 2.90e-04 | 98.5s
+epoch 024 | train 0.6435 | val_loss 0.6990 | val_dice 0.7774 | lr 2.89e-04 | 98.6s
+epoch 025 | train 0.7108 | val_loss 0.6728 | val_dice 0.6457 | lr 2.89e-04 | 98.8s
+epoch 026 | train 0.6503 | val_loss 0.6562 | val_dice 0.8079 | lr 2.88e-04 | 98.8s
+epoch 027 | train 0.6498 | val_loss 0.6651 | val_dice 0.6781 | lr 2.87e-04 | 98.7s
+epoch 028 | train 0.6440 | val_loss 0.6436 | val_dice 0.8195 | lr 2.86e-04 | 98.3s
+  -> best checkpoint (dice 0.8195)
+epoch 029 | train 0.6336 | val_loss 0.6690 | val_dice 0.7886 | lr 2.85e-04 | 99.9s
+epoch 030 | train 0.6290 | val_loss 0.6046 | val_dice 0.8311 | lr 2.84e-04 | 98.8s
+  -> best checkpoint (dice 0.8311)
+epoch 031 | train 0.6185 | val_loss 0.6091 | val_dice 0.8323 | lr 2.83e-04 | 98.8s
+  -> best checkpoint (dice 0.8323)
+epoch 032 | train 0.6165 | val_loss 0.6435 | val_dice 0.8111 | lr 2.81e-04 | 98.6s
+epoch 033 | train 0.6254 | val_loss 0.6254 | val_dice 0.8178 | lr 2.80e-04 | 99.1s
+epoch 034 | train 0.6145 | val_loss 0.6234 | val_dice 0.7699 | lr 2.79e-04 | 98.4s
+epoch 035 | train 0.6343 | val_loss 0.6319 | val_dice 0.7981 | lr 2.78e-04 | 98.8s
+epoch 036 | train 0.6631 | val_loss 0.6345 | val_dice 0.8150 | lr 2.77e-04 | 98.9s
+epoch 037 | train 0.6352 | val_loss 0.6254 | val_dice 0.8207 | lr 2.75e-04 | 99.0s
+epoch 038 | train 0.6254 | val_loss 0.6246 | val_dice 0.8129 | lr 2.74e-04 | 99.1s
+epoch 039 | train 0.6166 | val_loss 0.6535 | val_dice 0.7437 | lr 2.73e-04 | 98.5s
+epoch 040 | train 0.6511 | val_loss 0.7446 | val_dice 0.5985 | lr 2.71e-04 | 98.7s
+epoch 041 | train 0.6339 | val_loss 0.6348 | val_dice 0.8186 | lr 2.70e-04 | 98.5s
+epoch 042 | train 0.6215 | val_loss 0.6365 | val_dice 0.7877 | lr 2.69e-04 | 98.7s
+epoch 043 | train 0.6465 | val_loss 0.6564 | val_dice 0.7689 | lr 2.67e-04 | 98.7s
+epoch 044 | train 0.6234 | val_loss 0.6209 | val_dice 0.8195 | lr 2.66e-04 | 98.8s
+epoch 045 | train 0.6246 | val_loss 0.6229 | val_dice 0.8264 | lr 2.64e-04 | 98.9s
+epoch 046 | train 0.6357 | val_loss 0.6228 | val_dice 0.8208 | lr 2.63e-04 | 98.8s
+epoch 047 | train 0.6186 | val_loss 0.6569 | val_dice 0.8107 | lr 2.61e-04 | 98.6s
+epoch 048 | train 0.6081 | val_loss 0.6314 | val_dice 0.7993 | lr 2.59e-04 | 98.8s
+epoch 049 | train 0.6075 | val_loss 0.6336 | val_dice 0.8179 | lr 2.58e-04 | 98.4s
+epoch 050 | train 0.5973 | val_loss 0.6410 | val_dice 0.8174 | lr 2.56e-04 | 99.1s
+epoch 051 | train 0.5945 | val_loss 0.6526 | val_dice 0.8045 | lr 2.54e-04 | 98.9s
+epoch 052 | train 0.6258 | val_loss 0.6439 | val_dice 0.7950 | lr 2.53e-04 | 98.7s
+epoch 053 | train 0.6305 | val_loss 0.6301 | val_dice 0.7763 | lr 2.51e-04 | 98.9s
+epoch 054 | train 0.6176 | val_loss 0.6175 | val_dice 0.8155 | lr 2.49e-04 | 98.8s
+epoch 055 | train 0.6031 | val_loss 0.6260 | val_dice 0.8182 | lr 2.47e-04 | 98.5s
+epoch 056 | train 0.6150 | val_loss 0.6079 | val_dice 0.8300 | lr 2.46e-04 | 98.8s
+epoch 057 | train 0.5941 | val_loss 0.6068 | val_dice 0.8320 | lr 2.44e-04 | 98.8s
+epoch 058 | train 0.6117 | val_loss 0.6276 | val_dice 0.8245 | lr 2.42e-04 | 98.9s
+epoch 059 | train 0.6202 | val_loss 0.6185 | val_dice 0.8133 | lr 2.40e-04 | 98.6s
+epoch 060 | train 0.6261 | val_loss 0.6582 | val_dice 0.7628 | lr 2.38e-04 | 100.2s
+epoch 061 | train 0.6154 | val_loss 0.6320 | val_dice 0.8117 | lr 2.36e-04 | 99.6s
+epoch 062 | train 0.6107 | val_loss 0.6408 | val_dice 0.8041 | lr 2.34e-04 | 99.2s
+epoch 063 | train 0.6088 | val_loss 0.6026 | val_dice 0.8143 | lr 2.32e-04 | 98.8s
+epoch 064 | train 0.5941 | val_loss 0.6164 | val_dice 0.8227 | lr 2.30e-04 | 98.7s
+epoch 065 | train 0.5927 | val_loss 0.6248 | val_dice 0.8063 | lr 2.28e-04 | 98.5s
+epoch 066 | train 0.5973 | val_loss 0.6047 | val_dice 0.8348 | lr 2.26e-04 | 99.3s
+  -> best checkpoint (dice 0.8348)
+epoch 067 | train 0.5972 | val_loss 0.6008 | val_dice 0.8329 | lr 2.24e-04 | 99.2s
+epoch 068 | train 0.5951 | val_loss 0.6330 | val_dice 0.7473 | lr 2.22e-04 | 99.0s
+epoch 069 | train 0.6170 | val_loss 0.6243 | val_dice 0.7120 | lr 2.20e-04 | 98.8s
+epoch 070 | train 0.6382 | val_loss 0.6449 | val_dice 0.7218 | lr 2.18e-04 | 98.7s
+epoch 071 | train 0.6102 | val_loss 0.6246 | val_dice 0.8078 | lr 2.16e-04 | 98.8s
+epoch 072 | train 0.6051 | val_loss 0.6239 | val_dice 0.8265 | lr 2.14e-04 | 98.7s
+epoch 073 | train 0.5930 | val_loss 0.6051 | val_dice 0.8339 | lr 2.12e-04 | 98.5s
+epoch 074 | train 0.5893 | val_loss 0.6094 | val_dice 0.8361 | lr 2.10e-04 | 98.9s
+  -> best checkpoint (dice 0.8361)
+epoch 075 | train 0.5939 | val_loss 0.6101 | val_dice 0.8351 | lr 2.07e-04 | 99.0s
+epoch 076 | train 0.5969 | val_loss 0.6144 | val_dice 0.8231 | lr 2.05e-04 | 98.5s
+epoch 077 | train 0.5960 | val_loss 0.6307 | val_dice 0.8092 | lr 2.03e-04 | 98.7s
+epoch 078 | train 0.5909 | val_loss 0.6066 | val_dice 0.8307 | lr 2.01e-04 | 98.9s
+epoch 079 | train 0.5964 | val_loss 0.6193 | val_dice 0.8245 | lr 1.99e-04 | 98.6s
+epoch 080 | train 0.5860 | val_loss 0.6677 | val_dice 0.8080 | lr 1.96e-04 | 98.9s
+epoch 081 | train 0.5965 | val_loss 0.6363 | val_dice 0.8053 | lr 1.94e-04 | 98.7s
+epoch 082 | train 0.5919 | val_loss 0.6206 | val_dice 0.8249 | lr 1.92e-04 | 98.7s
+epoch 083 | train 0.5774 | val_loss 0.6082 | val_dice 0.8244 | lr 1.90e-04 | 98.8s
+epoch 084 | train 0.5759 | val_loss 0.6092 | val_dice 0.8338 | lr 1.87e-04 | 98.7s
+epoch 085 | train 0.5826 | val_loss 0.6101 | val_dice 0.8392 | lr 1.85e-04 | 98.9s
+  -> best checkpoint (dice 0.8392)
+epoch 086 | train 0.5729 | val_loss 0.6373 | val_dice 0.8303 | lr 1.83e-04 | 98.6s
+epoch 087 | train 0.5856 | val_loss 1.1167 | val_dice 0.4921 | lr 1.80e-04 | 98.5s
+epoch 088 | train 0.5955 | val_loss 0.6488 | val_dice 0.8172 | lr 1.78e-04 | 98.9s
+epoch 089 | train 0.5792 | val_loss 0.6315 | val_dice 0.8203 | lr 1.76e-04 | 98.5s
+epoch 090 | train 0.5832 | val_loss 0.6834 | val_dice 0.8015 | lr 1.73e-04 | 99.3s
+epoch 091 | train 0.5885 | val_loss 0.6156 | val_dice 0.8316 | lr 1.71e-04 | 98.7s
+epoch 092 | train 0.5668 | val_loss 0.6204 | val_dice 0.8279 | lr 1.69e-04 | 98.5s
+epoch 093 | train 0.5726 | val_loss 0.6105 | val_dice 0.8380 | lr 1.66e-04 | 98.4s
+epoch 094 | train 0.5854 | val_loss 0.6237 | val_dice 0.8333 | lr 1.64e-04 | 98.6s
+epoch 095 | train 0.5693 | val_loss 0.6234 | val_dice 0.8392 | lr 1.62e-04 | 98.4s
+epoch 096 | train 0.5713 | val_loss 0.6280 | val_dice 0.8377 | lr 1.59e-04 | 98.6s
+epoch 097 | train 0.5763 | val_loss 0.6063 | val_dice 0.8442 | lr 1.57e-04 | 99.0s
+  -> best checkpoint (dice 0.8442)
+epoch 098 | train 0.5797 | val_loss 0.6472 | val_dice 0.7649 | lr 1.55e-04 | 98.9s
+epoch 099 | train 0.5818 | val_loss 0.6113 | val_dice 0.8298 | lr 1.52e-04 | 99.0s
+epoch 100 | train 0.5756 | val_loss 0.6304 | val_dice 0.8242 | lr 1.50e-04 | 98.9s
+done. best val dice = 0.8442

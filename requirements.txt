@@ -1,10 +1,13 @@
-torch>=2.1
-torchvision
 segmentation-models-pytorch
+torch
+torchvision
+torchaudio
 albumentations
-opencv-python
 numpy
 pillow
 pyyaml
 tensorboard
-tqdm
+timm
+transformers
+accelerate
+safetensors

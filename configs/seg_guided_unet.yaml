@@ -1,0 +1,30 @@
+seed: 42
+ckpt_dir: checkpoints/exp_unet_guided
+
+dataset:
+  root: data/mouse_cardiac
+  tile_size: 512
+  stride: 512
+  tiles_per_image: 4
+  sampling:
+    strategy: guided
+    min_tissue_ratio: 0.05
+    exploration_rate: 0.1
+    max_attempts: 20
+    jitter_px: 32
+
+model:
+  name: unet
+  encoder: efficientnet-b0
+  encoder_weights: imagenet
+  classes: 4
+
+train:
+  batch_size: 2
+  grad_accum: 4
+  epochs: 100
+  lr: 0.0003
+  weight_decay: 0.0001
+  label_smoothing: 0.0
+  num_workers: 4
+  log_dir: runs/exp_unet_guided
