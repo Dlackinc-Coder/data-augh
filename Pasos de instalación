@@ -1,0 +1,22 @@
+Todo está redactado en texto normal, sin recuadros de código, diseñado como prompts directos (instrucciones) para que copies y pegues directamente a OpenCode.
+Paso 0: Preparación de la Gráfica (Drivers)
+Prompt para opencode: Actualiza los repositorios del sistema con apt e instala automáticamente los drivers de video recomendados utilizando el comando ubuntu-drivers autoinstall.
+Verificación: Pídele a OpenCode que reinicie el servidor (usando sudo reboot). Cuando vuelva a encender, dile que ejecute nvidia-smi. Debes ver en pantalla tu RTX 4070 Ti y sus 12288 MiB (12 GB) de memoria.
+Paso 1: Conexión Remota (Tailscale)
+Prompt para opencode: Descarga e instala Tailscale usando su script oficial con curl. Cuando termine, levanta el servicio ejecutando sudo tailscale up.
+Verificación: OpenCode detendrá el proceso para mostrarte un enlace web. Cópialo y ábrelo en tu navegador para autenticar el servidor en tu red.
+Paso 2: Instalación de Miniconda y Entorno
+Prompt para opencode: Descarga el script de instalación de Miniconda para Linux x86_64 y ejecútalo en modo silencioso. Luego, instala conda-libmamba-solver en el entorno base, configúralo como el solucionador por defecto, y crea un entorno nuevo llamado mioaug que use Python 3.11. Activa el entorno.
+Verificación: Asegúrate de que OpenCode recargue la terminal (con source ~/.bashrc) y te confirme que la etiqueta (mioaug) ya aparece activa.
+Paso 3: El Motor de IA (PyTorch optimizado para RTX 40-Series)
+Prompt para opencode: Verifica que el entorno mioaug esté activo. Instala torch, torchvision y torchaudio usando pip, apuntando específicamente al índice oficial de descargas de CUDA 12.1.
+Verificación: Esta descarga tomará tiempo porque son varios gigabytes. Asegúrate de que termine arrojando un mensaje de instalación exitosa sin letras rojas.
+Paso 4: Prueba de Fuego (Validación de VRAM)
+Prompt para opencode: Escribe y ejecuta un script rápido de Python que importe torch, verifique si CUDA está disponible, e imprima el nombre del dispositivo de video detectado.
+Verificación: La respuesta en pantalla tiene que ser un "True" rotundo, seguido del nombre "NVIDIA GeForce RTX 4070 Ti". Si ves esto, tienes todo el poder de la gráfica a tu disposición.
+Paso 5: Librerías de Visión por Computadora
+Prompt para opencode: Manteniendo el entorno mioaug activo, instala usando pip en un solo comando: segmentation-models-pytorch, albumentations, opencv-python-headless, tensorboard, wandb y jupyterlab.
+Verificación: Revisa que OpenCode confirme que todas las herramientas están listas para usarse.
+Paso 6: Descarga de tu Proyecto
+Prompt para opencode: Clona mi repositorio de Git usando mi URL y cambia el directorio para entrar a la carpeta del proyecto. (Recuerda pegarle aquí tu enlace de GitHub).
+Verificación: Pide que te liste los archivos con el comando ls para confirmar que tus scripts de entrenamiento ya están ahí.
