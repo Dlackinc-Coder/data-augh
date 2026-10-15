@@ -143,6 +143,39 @@ def build_litemedsam(cfg):
     return model
 
 
+def build_deeplabv3plus(cfg):
+    m = cfg["model"]
+    return smp.DeepLabV3Plus(
+        encoder_name=m.get("encoder", "efficientnet-b0"),
+        encoder_weights=m.get("encoder_weights", "imagenet"),
+        in_channels=3,
+        classes=m.get("classes", 4),
+        activation=None,
+    )
+
+
+def build_fpn(cfg):
+    m = cfg["model"]
+    return smp.FPN(
+        encoder_name=m.get("encoder", "efficientnet-b0"),
+        encoder_weights=m.get("encoder_weights", "imagenet"),
+        in_channels=3,
+        classes=m.get("classes", 4),
+        activation=None,
+    )
+
+
+def build_manet(cfg):
+    m = cfg["model"]
+    return smp.MAnet(
+        encoder_name=m.get("encoder", "efficientnet-b0"),
+        encoder_weights=m.get("encoder_weights", "imagenet"),
+        in_channels=3,
+        classes=m.get("classes", 4),
+        activation=None,
+    )
+
+
 def freeze_encoder(model, freeze=True):
     if hasattr(model, 'segformer'):
         for param in model.segformer.encoder.parameters():
@@ -164,5 +197,11 @@ def build_model(cfg):
         return build_segformer(cfg)
     elif model_type == "litemedsam":
         return build_litemedsam(cfg)
+    elif model_type == "deeplabv3plus":
+        return build_deeplabv3plus(cfg)
+    elif model_type == "fpn":
+        return build_fpn(cfg)
+    elif model_type == "manet":
+        return build_manet(cfg)
     else:
         raise ValueError(f"Unknown model type: {model_type}")
