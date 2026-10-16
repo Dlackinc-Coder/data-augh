@@ -1,0 +1,48 @@
+# G-v4: receta G-v3 (Swin-T DPT, 300 ep, aug v2, LLRD, bf16, warmup 10) con
+# perdida Tversky+CE en lugar de dice_ce. alpha=0.3 / beta=0.7 (recall de IS).
+# Fase 3, 16-oct-2026. Comparar contra G-v3 (dice_ce) a igualdad de receta.
+seed: 42
+ckpt_dir: checkpoints/exp_dpt_swin_v4_tver
+
+dataset:
+  root: "data/mouse_cardiac"
+  tile_size: 512
+  stride: 512
+  tiles_per_image: 8
+  aug_version: 2
+
+model:
+  name: "dpt"
+  encoder: "tu-swin_tiny_patch4_window7_224"
+  encoder_weights: "imagenet"
+  encoder_kwargs: {img_size: 512}
+  readout: "ignore"
+  classes: 4
+
+train:
+  epochs: 300
+  optimizer: "adamw"
+  lr: 0.0003
+  llrd: true
+  llrd_decay: 0.75
+  weight_decay: 0.0001
+  scheduler: "cosine"
+  warmup_epochs: 10
+  amp: true
+  precision: "bf16"
+  batch_size: 2
+  grad_accum: 4
+  num_workers: 4
+  log_dir: "runs/exp_dpt_swin_v4_tver"
+  save_every: 50
+
+loss:
+  type: "tversky_ce"
+  alpha: 0.3
+  beta: 0.7
+  tversky_weight: 1.0
+  ce_weight: 1.0
+  class_weights: [0.1, 1.0, 1.0, 1.0]
+
+output:
+  ckpt_dir: checkpoints/exp_dpt_swin_v4_tver

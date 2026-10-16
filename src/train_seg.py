@@ -76,6 +76,56 @@ def dice_ce_loss(logits, targets, dice_weight=1.0, ce_weight=1.0, class_weights=
     return dice_weight * dice_loss + ce_weight * ce_loss
 
 
+def tversky_loss(logits, targets, alpha=0.3, beta=0.7, eps=1e-6, class_weights=None):
+    """Soft Tversky multiclase (Fase 3, 16-oct-2026).
+
+    L_c = 1 - (TP + eps) / (TP + alpha*FP + beta*FN + eps). alpha=beta=0.5 es
+    el soft-Dice. beta>alpha penaliza mas los FN (favorece recall; util para
+    clases raras como IS). alpha/beta pueden ser escalares o listas por clase
+    (len = num_classes). class_weights pondera la media por clase.
+    """
+    num_classes = logits.shape[1]
+    if isinstance(alpha, (list, tuple)):
+        alphas = [float(a) for a in alpha]
+        assert len(alphas) == num_classes, "alpha: lista != num_classes"
+    else:
+        alphas = [float(alpha)] * num_classes
+    if isinstance(beta, (list, tuple)):
+        betas = [float(b) for b in beta]
+        assert len(betas) == num_classes, "beta: lista != num_classes"
+    else:
+        betas = [float(beta)] * num_classes
+    probs = torch.softmax(logits, dim=1)
+    if class_weights is not None:
+        w = class_weights.to(logits.device).float()
+    else:
+        w = torch.ones(num_classes, device=logits.device)
+    loss = 0.0
+    wsum = 0.0
+    for c in range(num_classes):
+        p = probs[:, c]
+        g = (targets == c).float()
+        tp = (p * g).sum()
+        fp = (p * (1.0 - g)).sum()
+        fn = ((1.0 - p) * g).sum()
+        loss = loss + w[c] * (1 - (tp + eps)
+                              / (tp + alphas[c] * fp + betas[c] * fn + eps))
+        wsum = wsum + w[c]
+    return loss / wsum.clamp_min(1e-8)
+
+
+def tversky_ce_loss(logits, targets, alpha=0.3, beta=0.7, tv_weight=1.0,
+                    ce_weight=1.0, class_weights=None, eps=1e-6):
+    """Tversky multiclase + CrossEntropy (esta ponderable por clase)."""
+    tv = tversky_loss(logits, targets, alpha, beta, eps=eps)
+    if class_weights is not None:
+        ce = F.cross_entropy(logits, targets,
+                             weight=class_weights.to(logits.device))
+    else:
+        ce = F.cross_entropy(logits, targets)
+    return tv_weight * tv + ce_weight * ce
+
+
 def main(cfg_path="configs/seg.yaml"):
     cfg = load_cfg(cfg_path)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -115,6 +165,24 @@ def main(cfg_path="configs/seg.yaml"):
             class_weights = torch.tensor(class_weights, dtype=torch.float32)
         def criterion(logits, targets):
             return dice_ce_loss(logits, targets, dice_w, ce_w, class_weights)
+    elif loss_type in ("tversky", "tversky_ce"):
+        # Tversky (Fase 3, 16-oct-2026): beta>alpha penaliza FN (recall; util
+        # para clases raras como IS). alpha/beta escalares o listas por clase.
+        alpha = loss_cfg.get("alpha", 0.3)
+        beta = loss_cfg.get("beta", 0.7)
+        tv_w = loss_cfg.get("tversky_weight", 1.0)
+        ce_w = loss_cfg.get("ce_weight", 0.0)
+        class_weights = loss_cfg.get("class_weights", None)
+        if class_weights:
+            class_weights = torch.tensor(class_weights, dtype=torch.float32)
+        if loss_type == "tversky":
+            def criterion(logits, targets):
+                return tv_w * tversky_loss(logits, targets, alpha, beta,
+                                           class_weights=class_weights)
+        else:
+            def criterion(logits, targets):
+                return tversky_ce_loss(logits, targets, alpha, beta, tv_w,
+                                       ce_w, class_weights)
     else:
         class_weights = loss_cfg.get("class_weights", None)
         if class_weights:
@@ -152,6 +220,7 @@ def main(cfg_path="configs/seg.yaml"):
     use_amp = use_cuda and precision != "fp32"
     scaler = torch.amp.GradScaler('cuda', enabled=(use_cuda and precision == "fp16"))
     accum = t.get("grad_accum", 1)
+    save_every = int(t.get("save_every", 0) or 0)
 
     # Scheduler (fix 15-oct-2026): scheduler.step() corre 1 de cada `accum`
     # micro-pasos, asi que T_max debe contener pasos de OPTIMIZADOR, no de batch.
@@ -278,6 +347,10 @@ def main(cfg_path="configs/seg.yaml"):
                         "epoch": epoch, "dice": val_dice},
                        os.path.join(ckpt_dir, "best.pt"))
             print(f"  -> best checkpoint (dice {best_dice:.4f})")
+        if save_every > 0 and epoch % save_every == 0:
+            torch.save({"model": model.state_dict(), "cfg": cfg,
+                        "epoch": epoch, "dice": val_dice},
+                       os.path.join(ckpt_dir, f"ep{epoch:03d}.pt"))
 
     if writer:
         writer.close()

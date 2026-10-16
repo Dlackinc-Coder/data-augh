@@ -39,6 +39,7 @@ Uso:
 
 Opciones: --tile (def. cfg/512), --stride (def. tile/2), --amp fp32|bf16,
   --tta none|flips|d4, --max-images N (0=todas), --save-overlays N,
+  --save-preds 0|1 (def. 1: guarda outdir/preds/<stem>.png),
   --split test|val (def. test), --device auto|cuda|cpu
 """
 import argparse
@@ -264,9 +265,41 @@ def _agg_class_stats(per_image, c):
     return vals, ious
 
 
-def evaluate_split(model, model_b, alpha, pairs, tile, stride, batch, device,
-                   amp_dtype, tta, save_overlays=0, outdir=None, verbose=True):
-    per_image = {}
+def evaluate_pair(pred, gt, want_slice=True):
+    """Metricas de un par pred/gt uint8 (0..3) -> (rec, comps, n_comp).
+
+    Mismas convenciones que la evaluacion completa: clase ausente en GT y pred
+    -> se omite; presente en GT y no predicha -> dice 0; predicha sin GT -> no
+    entra en la media (FP). rec incluye "inter" (interseccion en px) para poder
+    agregar la metrica micro.
+    """
+    rec = {"dice": {}, "iou": {}, "hd": {}, "hd95": {}, "pred_px": {},
+           "gt_px": {}, "inter": {}}
+    for c in FG_CLASSES:
+        r = class_dice_iou(pred, gt, c)
+        p = pred == c
+        g = gt == c
+        ps, gs = int(p.sum()), int(g.sum())
+        rec["pred_px"][c] = ps
+        rec["gt_px"][c] = gs
+        if r is None:
+            continue
+        rec["dice"][c] = r[0]
+        rec["iou"][c] = r[1]
+        rec["inter"][c] = int(np.logical_and(p, g).sum())
+        if gs > 0:
+            hd = hd_pair(p, g)
+            if hd is not None:
+                rec["hd"][c], rec["hd95"][c] = hd
+    if want_slice:
+        comps, n_comp = slice_dice(pred, gt)
+    else:
+        comps, n_comp = [], 0
+    return rec, comps, n_comp
+
+
+def aggregate_per_image(per_image):
+    """Agrega {stem: rec} -> medias/micro (todo salvo rodajas/bad/elapsed)."""
     dice_lists = {c: [] for c in FG_CLASSES}
     iou_lists = {c: [] for c in FG_CLASSES}
     hd_lists = {c: [] for c in FG_CLASSES}
@@ -276,68 +309,26 @@ def evaluate_split(model, model_b, alpha, pairs, tile, stride, batch, device,
     n_gt = {c: 0 for c in FG_CLASSES}
     n_pred = {c: 0 for c in FG_CLASSES}
     ratios_is_lv, ratios_is_aar = [], []
-    slice_acc = {c: [] for c in FG_CLASSES}
-    n_slices_total = 0
-    candidates = []
-    bad_images = []
-    t_start = time.time()
-
-    for idx, (stem, img_path, mask_path) in enumerate(pairs, 1):
-        img = cv2.imread(img_path, cv2.IMREAD_COLOR)
-        if img is None:
-            print(f"  !! no se pudo leer {img_path}, se omite", flush=True)
-            bad_images.append(stem)
-            continue
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        gt = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
-        if gt is None:
-            print(f"  !! no se pudo leer {mask_path}, se omite", flush=True)
-            bad_images.append(stem)
-            continue
-        gt = np.clip(np.rint(gt.astype(np.float32)), 0, 3).astype(np.uint8)
-
-        t0 = time.time()
-        try:
-            pred = infer_full_image(model, model_b, alpha, img, tile=tile,
-                                    stride=stride, batch=batch, device=device,
-                                    amp_dtype=amp_dtype, tta=tta,
-                                    verbose=verbose)
-        except Exception as e:
-            print(f"  !! error evaluando {stem}: {e}", flush=True)
-            bad_images.append(stem)
-            continue
-
-        rec = {"dice": {}, "iou": {}, "hd": {}, "hd95": {}, "pred_px": {},
-               "gt_px": {}}
+    for stem, rec in per_image.items():
         for c in FG_CLASSES:
-            r = class_dice_iou(pred, gt, c)
-            p = pred == c
-            g = gt == c
-            ps, gs = int(p.sum()), int(g.sum())
-            rec["pred_px"][c] = ps
-            rec["gt_px"][c] = gs
+            ps = rec["pred_px"][c]
+            gs = rec["gt_px"][c]
             if gs > 0:
                 n_gt[c] += 1
             if ps > 0:
                 n_pred[c] += 1
-            if r is None:
-                continue
-            rec["dice"][c] = r[0]
-            rec["iou"][c] = r[1]
-            if gs == 0:
-                fp_only[c].append(stem)
-            else:
-                dice_lists[c].append(r[0])
-                iou_lists[c].append(r[1])
-                hd = hd_pair(p, g)
-                if hd is not None:
-                    rec["hd"][c], rec["hd95"][c] = hd
-                    hd_lists[c].append(hd[0])
-                    hd95_lists[c].append(hd[1])
-            micro[c][0] += int(np.logical_and(p, g).sum())
+            if c in rec["dice"]:
+                if gs == 0:
+                    fp_only[c].append(stem)
+                else:
+                    dice_lists[c].append(rec["dice"][c])
+                    iou_lists[c].append(rec["iou"][c])
+                    if c in rec["hd"]:
+                        hd_lists[c].append(rec["hd"][c])
+                        hd95_lists[c].append(rec["hd95"][c])
+            micro[c][0] += rec.get("inter", {}).get(c, 0)
             micro[c][1] += ps
             micro[c][2] += gs
-        # ratios de infarto
         if rec["gt_px"][1] > 0 and rec["gt_px"][3] > 0:
             ratios_is_lv.append((rec["gt_px"][3] / rec["gt_px"][1],
                                  rec["pred_px"][3] / rec["pred_px"][1]
@@ -346,29 +337,11 @@ def evaluate_split(model, model_b, alpha, pairs, tile, stride, batch, device,
             ratios_is_aar.append((rec["gt_px"][3] / rec["gt_px"][2],
                                   rec["pred_px"][3] / rec["pred_px"][2]
                                   if rec["pred_px"][2] > 0 else 0.0))
-        # por rodaja
-        comps, n_comp = slice_dice(pred, gt)
-        n_slices_total += len(comps)
-        for comp in comps:
-            for c, d in comp.items():
-                slice_acc[c].append(d)
-        # overlay candidato (mas tejido primero)
-        tissue = float((gt > 0).mean())
-        if save_overlays > 0:
-            candidates.append((tissue, stem, img, gt, pred))
 
-        dmean = (float(np.mean(list(rec["dice"].values())))
-                 if rec["dice"] else float("nan"))
-        if verbose:
-            print(f"  [{idx}/{len(pairs)}] {stem}: dice_media={dmean:.4f} "
-                  f"({time.time()-t0:.1f}s)", flush=True)
-        per_image[stem] = rec
-
-    # agregados
-    def _mean(xs, nd=6):
+    def _mean(xs):
         return float(np.mean(xs)) if xs else None
 
-    def _std(xs, nd=6):
+    def _std(xs):
         return float(np.std(xs)) if xs else None
 
     dice_mean = {c: _mean(dice_lists[c]) for c in FG_CLASSES}
@@ -403,6 +376,85 @@ def evaluate_split(model, model_b, alpha, pairs, tile, stride, batch, device,
             "bias": float(np.mean(prs - gts)),
         }
 
+    return {
+        "dice_mean": dice_mean, "dice_std": dice_std,
+        "dice_micro": micro_dice, "iou_mean": iou_mean,
+        "hd_mean": hd_mean, "hd95_mean": hd95_mean,
+        "avg3_mean": avg3, "avg3_micro": avg3_micro,
+        "avg_hd": avg_hd, "avg_hd95": avg_hd95,
+        "n_gt_images": n_gt, "n_pred_images": n_pred,
+        "fp_only_images": fp_only,
+        "ratio_is_lv": ratio_stats(ratios_is_lv),
+        "ratio_is_aar": ratio_stats(ratios_is_aar),
+    }
+
+
+def evaluate_split(model, model_b, alpha, pairs, tile, stride, batch, device,
+                   amp_dtype, tta, save_overlays=0, save_preds=1, outdir=None,
+                   verbose=True):
+    per_image = {}
+    slice_acc = {c: [] for c in FG_CLASSES}
+    n_slices_total = 0
+    candidates = []
+    bad_images = []
+    t_start = time.time()
+
+    for idx, (stem, img_path, mask_path) in enumerate(pairs, 1):
+        img = cv2.imread(img_path, cv2.IMREAD_COLOR)
+        if img is None:
+            print(f"  !! no se pudo leer {img_path}, se omite", flush=True)
+            bad_images.append(stem)
+            continue
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        gt = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+        if gt is None:
+            print(f"  !! no se pudo leer {mask_path}, se omite", flush=True)
+            bad_images.append(stem)
+            continue
+        gt = np.clip(np.rint(gt.astype(np.float32)), 0, 3).astype(np.uint8)
+
+        t0 = time.time()
+        try:
+            pred = infer_full_image(model, model_b, alpha, img, tile=tile,
+                                    stride=stride, batch=batch, device=device,
+                                    amp_dtype=amp_dtype, tta=tta,
+                                    verbose=verbose)
+        except Exception as e:
+            print(f"  !! error evaluando {stem}: {e}", flush=True)
+            bad_images.append(stem)
+            continue
+
+        if save_preds and outdir:
+            try:
+                pdir = os.path.join(outdir, "preds")
+                os.makedirs(pdir, exist_ok=True)
+                cv2.imwrite(os.path.join(pdir, f"{stem}.png"), pred)
+            except Exception as e:
+                print(f"  !! no se pudo guardar la pred de {stem}: {e}", flush=True)
+
+        rec, comps, _n_comp = evaluate_pair(pred, gt)
+        n_slices_total += len(comps)
+        for comp in comps:
+            for c, d in comp.items():
+                slice_acc[c].append(d)
+        # overlay candidato (mas tejido primero)
+        tissue = float((gt > 0).mean())
+        if save_overlays > 0:
+            candidates.append((tissue, stem, img, gt, pred))
+
+        dmean = (float(np.mean(list(rec["dice"].values())))
+                 if rec["dice"] else float("nan"))
+        if verbose:
+            print(f"  [{idx}/{len(pairs)}] {stem}: dice_media={dmean:.4f} "
+                  f"({time.time()-t0:.1f}s)", flush=True)
+        per_image[stem] = rec
+
+    agg = aggregate_per_image(per_image)
+
+    # medias por rodaja (aprox. evaluacion por slice del paper)
+    def _mean(xs):
+        return float(np.mean(xs)) if xs else None
+
     slice_mean = {c: _mean(slice_acc[c]) for c in FG_CLASSES}
     slice_valid = [slice_mean[c] for c in FG_CLASSES if slice_mean[c] is not None]
     slice_avg3 = float(np.mean(slice_valid)) if slice_valid else None
@@ -430,21 +482,12 @@ def evaluate_split(model, model_b, alpha, pairs, tile, stride, batch, device,
             cv2.imwrite(os.path.join(overlay_dir, f"overlay_{k:02d}_{stem}.png"),
                         cv2.cvtColor(panel, cv2.COLOR_RGB2BGR))
 
-    agg = {
-        "dice_mean": dice_mean, "dice_std": dice_std,
-        "dice_micro": micro_dice, "iou_mean": iou_mean,
-        "hd_mean": hd_mean, "hd95_mean": hd95_mean,
-        "avg3_mean": avg3, "avg3_micro": avg3_micro,
-        "avg_hd": avg_hd, "avg_hd95": avg_hd95,
-        "n_gt_images": n_gt, "n_pred_images": n_pred,
-        "fp_only_images": fp_only,
-        "ratio_is_lv": ratio_stats(ratios_is_lv),
-        "ratio_is_aar": ratio_stats(ratios_is_aar),
+    agg.update({
         "slice_dice_mean": slice_mean, "slice_avg3": slice_avg3,
         "n_slices": n_slices_total,
         "bad_images": bad_images,
         "elapsed_s": round(time.time() - t_start, 1),
-    }
+    })
     return per_image, agg, overlay_dir
 
 
@@ -511,6 +554,7 @@ def main():
     ap.add_argument("--tta", default="none", choices=["none", "flips", "d4"])
     ap.add_argument("--max-images", type=int, default=0)
     ap.add_argument("--save-overlays", type=int, default=0)
+    ap.add_argument("--save-preds", type=int, default=1, choices=[0, 1])
     ap.add_argument("--device", default="auto", choices=["auto", "cuda", "cpu"])
     args = ap.parse_args()
 
@@ -564,7 +608,8 @@ def main():
 
     per_image, agg, overlay_dir = evaluate_split(
         model, model_b, args.alpha, pairs, tile, stride, args.batch, device,
-        amp_dtype, args.tta, save_overlays=args.save_overlays, outdir=outdir)
+        amp_dtype, args.tta, save_overlays=args.save_overlays,
+        save_preds=args.save_preds, outdir=outdir)
 
     result = {
         "tag": tag,
@@ -578,7 +623,7 @@ def main():
         "ckpt_b_epoch": (ckpt_b.get("epoch") if ckpt_b is not None else None),
         "alpha": (args.alpha if model_b is not None else None),
         "tile": tile, "stride": stride, "batch": args.batch,
-        "amp": args.amp, "tta": args.tta,
+        "amp": args.amp, "tta": args.tta, "save_preds": args.save_preds,
         "n_images": len(per_image),
         "images": per_image,
         "aggregate": agg,

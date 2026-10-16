@@ -1,0 +1,45 @@
+# A-v5: receta A-v2 (U-Net EffB0, 200 ep, bf16, sched fix) con perdida
+# Tversky+CE en lugar de dice_ce. alpha=0.3 / beta=0.7: beta>alpha penaliza
+# mas los FN (favorece recall; pensada para clases raras como IS).
+# Fase 3, 16-oct-2026. Comparar contra A-v2 (dice_ce) a igualdad de receta.
+seed: 42
+ckpt_dir: checkpoints/exp_unet_a_v5_tver
+
+dataset:
+  root: "data/mouse_cardiac"
+  tile_size: 512
+  stride: 512
+  tiles_per_image: 8
+
+model:
+  name: "unet"
+  encoder: "efficientnet-b0"
+  encoder_weights: "imagenet"
+  freeze_encoder_epochs: 15
+  classes: 4
+
+train:
+  epochs: 200
+  optimizer: "adamw"
+  lr: 0.0003
+  weight_decay: 0.0001
+  scheduler: "cosine"
+  warmup_epochs: 5
+  amp: true
+  precision: "bf16"
+  batch_size: 2
+  grad_accum: 4
+  num_workers: 4
+  log_dir: "runs/exp_unet_a_v5_tver"
+  save_every: 25
+
+loss:
+  type: "tversky_ce"
+  alpha: 0.3
+  beta: 0.7
+  tversky_weight: 1.0
+  ce_weight: 1.0
+  class_weights: [0.1, 1.0, 1.0, 1.0]
+
+output:
+  ckpt_dir: "checkpoints/exp_unet_a_v5_tver"

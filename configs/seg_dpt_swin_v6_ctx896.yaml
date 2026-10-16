@@ -1,0 +1,47 @@
+# G-v6: receta G-v3 con contexto 896x896 (tile y encoder_kwargs) en lugar de
+# 512. Palanca "contexto": los cortes miden ~250-550 px, con 896 el tile
+# contiene el corte completo + contexto; batch 1 x accum 8 mantiene el batch
+# efectivo 8 con el presupuesto de 12 GB. Fase 3, 16-oct-2026.
+seed: 42
+ckpt_dir: checkpoints/exp_dpt_swin_v6_ctx896
+
+dataset:
+  root: "data/mouse_cardiac"
+  tile_size: 896
+  stride: 896
+  tiles_per_image: 8
+  aug_version: 2
+
+model:
+  name: "dpt"
+  encoder: "tu-swin_tiny_patch4_window7_224"
+  encoder_weights: "imagenet"
+  encoder_kwargs: {img_size: 896}
+  readout: "ignore"
+  classes: 4
+
+train:
+  epochs: 300
+  optimizer: "adamw"
+  lr: 0.0003
+  llrd: true
+  llrd_decay: 0.75
+  weight_decay: 0.0001
+  scheduler: "cosine"
+  warmup_epochs: 10
+  amp: true
+  precision: "bf16"
+  batch_size: 1
+  grad_accum: 8
+  num_workers: 4
+  log_dir: "runs/exp_dpt_swin_v6_ctx896"
+  save_every: 50
+
+loss:
+  type: "dice_ce"
+  dice_weight: 1.0
+  ce_weight: 1.0
+  class_weights: [0.1, 1.0, 1.0, 1.0]
+
+output:
+  ckpt_dir: checkpoints/exp_dpt_swin_v6_ctx896

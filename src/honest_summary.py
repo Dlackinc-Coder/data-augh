@@ -104,7 +104,7 @@ def main():
 
     add_group("Modelos individuales", SINGLES)
 
-    tta = [(t, l + " - TTA flips") for t, l in SINGLES if f"{t}@tta" in runs]
+    tta = [(f"{t}@tta", l + " - TTA flips") for t, l in SINGLES if f"{t}@tta" in runs]
     add_group("Con TTA (flips x4)", tta)
 
     ens = [(t, "ensemble probs alpha 0.5")
