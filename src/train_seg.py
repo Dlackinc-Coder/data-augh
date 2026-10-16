@@ -92,6 +92,16 @@ def main(cfg_path="configs/seg.yaml"):
     model = build_model(cfg).to(device)
     use_cuda = device.type == "cuda"
 
+    # Freeze inicial del encoder (fix 16-oct-2026): antes solo existia el
+    # unfreeze en el bucle; el encoder nunca se congelaba al inicio
+    # (freeze_encoder_epochs era no-op). Ahora se congela ANTES de crear el
+    # optimizer, solo si el config lo pide (freeze_encoder_epochs > 0).
+    # Los runs sin ese campo no cambian de comportamiento.
+    freeze_epochs_cfg = int(cfg["model"].get("freeze_encoder_epochs", 0) or 0)
+    if freeze_epochs_cfg > 0:
+        freeze_encoder(model, freeze=True)
+        print(f"  -> Encoder congelado las primeras {freeze_epochs_cfg} epocas")
+
     t = cfg.get("train", cfg.get("training", {}))
     loss_cfg = cfg.get("loss", {})
     

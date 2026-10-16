@@ -7,6 +7,7 @@ DEST="$HOME/backups/data-augh-$(date +%F_%H%M)"
 mkdir -p "$DEST"
 rsync -a \
   --exclude 'data/' \
+  --exclude '.venv/' \
   --exclude '__pycache__/' \
   --exclude '*.pyc' \
   --exclude 'experiments/*/test_overlays*/' \
