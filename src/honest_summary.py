@@ -44,6 +44,8 @@ def load_runs():
     if not os.path.isdir(OUT):
         return runs
     for d in sorted(os.listdir(OUT)):
+        if d.startswith("smoke") or d.startswith("_"):
+            continue
         p = os.path.join(OUT, d, "metrics.json")
         if os.path.isfile(p):
             try:
@@ -124,8 +126,8 @@ def main():
     lines.append("- Convencion Dice: clase ausente en GT y pred -> se omite; "
                  "presente en GT pero no predicha -> 0; predicha sin GT -> no entra "
                  "en la media (se cuenta como FP en los JSON).")
-    lines.append("- Inferencia en bf16 (verificado identico a fp32 en estos 4 "
-                 "arquetipos por el equipo; era el modo de entrenamiento de los DPT).")
+    lines.append("- Inferencia en bf16 (verificado == fp32 el 16-oct en U-Net y "
+                 "Swin: diferencia < 0.0002 de Dice).")
 
     text = "\n".join(lines) + "\n"
     os.makedirs(OUT, exist_ok=True)
