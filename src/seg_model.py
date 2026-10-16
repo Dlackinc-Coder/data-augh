@@ -20,6 +20,47 @@ def build_unet(cfg):
     return model
 
 
+def build_dpt(cfg):
+    """DPT (Dense Prediction Transformer) con backbone timm via smp.
+
+    Soporta: Swin, ViT, PVTv2, ConvNeXt y cualquier otro timm model.
+    El config debe indicar el encoder con prefijo 'tu-' (timm universal),
+    p. ej. encoder: "tu-swin_tiny_patch4_window7_224".
+
+    Campos opcionales en model:
+      - encoder_kwargs: dict de argumentos para timm (p. ej. img_size: 512)
+      - readout: "cat" | "add" | "ignore" (tokens prefix/cls)
+      - encoder_depth: niveles de features (default 4)
+      - freeze_encoder_epochs: épocas con encoder congelado
+    """
+    m = cfg["model"]
+    enc = m.get("encoder")
+    if not enc:
+        raise ValueError("model.encoder es requerido para DPT (ej. tu-swin_tiny_patch4_window7_224)")
+    if not enc.startswith("tu-"):
+        enc = "tu-" + enc
+    weights = m.get("encoder_weights", "imagenet")
+    classes = m.get("classes", 4)
+    depth = m.get("encoder_depth", 4)
+    readout = m.get("readout", "cat")
+    enc_kwargs = m.get("encoder_kwargs", {}) or {}
+    freeze_encoder_epochs = m.get("freeze_encoder_epochs", 0)
+
+    model = smp.DPT(
+        encoder_name=enc,
+        encoder_weights=weights,
+        encoder_depth=depth,
+        decoder_readout=readout,
+        in_channels=3,
+        classes=classes,
+        activation=None,
+        **enc_kwargs,
+    )
+    model._freeze_encoder_epochs = freeze_encoder_epochs
+    model._encoder_frozen = False
+    return model
+
+
 def build_segformer(cfg):
     from transformers import SegformerForSemanticSegmentation
     
@@ -164,5 +205,7 @@ def build_model(cfg):
         return build_segformer(cfg)
     elif model_type == "litemedsam":
         return build_litemedsam(cfg)
+    elif model_type == "dpt":
+        return build_dpt(cfg)
     else:
         raise ValueError(f"Unknown model type: {model_type}")

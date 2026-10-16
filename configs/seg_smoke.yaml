@@ -1,0 +1,25 @@
+# Config de SMOKE TEST — 1 época real para verificar el pipeline U-Net de extremo a extremo.
+# No toca la config original (seg.yaml) ni sus checkpoints.
+seed: 42
+ckpt_dir: checkpoints/smoke
+
+dataset:
+  root: data/mouse_cardiac
+  tile_size: 512
+  stride: 512
+  tiles_per_image: 8
+
+model:
+  encoder: efficientnet-b0
+  encoder_weights: imagenet
+  classes: 4
+
+train:
+  batch_size: 2
+  grad_accum: 4
+  epochs: 1
+  lr: 3.0e-4
+  weight_decay: 1.0e-4
+  label_smoothing: 0.0
+  precision: fp16
+  log_dir: runs/smoke_seg

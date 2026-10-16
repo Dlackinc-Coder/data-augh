@@ -1,0 +1,37 @@
+ckpt_dir: checkpoints/smoke_dpt_pvtv2
+dataset:
+  root: data/mouse_cardiac
+  stride: 512
+  tile_size: 512
+  tiles_per_image: 8
+loss:
+  ce_weight: 1.0
+  class_weights:
+  - 0.1
+  - 1.0
+  - 1.0
+  - 1.0
+  dice_weight: 1.0
+  type: dice_ce
+model:
+  classes: 4
+  encoder: tu-pvt_v2_b2
+  encoder_weights: imagenet
+  freeze_encoder_epochs: 15
+  name: dpt
+  readout: ignore
+output:
+  ckpt_dir: checkpoints/smoke_dpt_pvtv2
+seed: 42
+train:
+  amp: true
+  batch_size: 2
+  epochs: 1
+  grad_accum: 4
+  log_dir: runs/smoke_dpt_pvtv2
+  lr: 0.0003
+  num_workers: 4
+  optimizer: adamw
+  precision: bf16
+  scheduler: cosine
+  weight_decay: 0.0001

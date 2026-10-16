@@ -1,0 +1,45 @@
+# G-v3: Swin-T con TODAS las condiciones de la literatura para transformers:
+# aug v2 (ventanas por epoch + elastic + tinte), LLRD (decay 0.75),
+# 300 epocas, warmup 10, sin freeze (el LLRD lo reemplaza), dice_ce (receta G).
+seed: 42
+ckpt_dir: checkpoints/exp_dpt_swin_v3
+
+dataset:
+  root: "data/mouse_cardiac"
+  tile_size: 512
+  stride: 512
+  tiles_per_image: 8
+  aug_version: 2
+
+model:
+  name: "dpt"
+  encoder: "tu-swin_tiny_patch4_window7_224"
+  encoder_weights: "imagenet"
+  encoder_kwargs: {img_size: 512}
+  readout: "ignore"
+  classes: 4
+
+train:
+  epochs: 300
+  optimizer: "adamw"
+  lr: 0.0003
+  llrd: true
+  llrd_decay: 0.75
+  weight_decay: 0.0001
+  scheduler: "cosine"
+  warmup_epochs: 10
+  amp: true
+  precision: "bf16"
+  batch_size: 2
+  grad_accum: 4
+  num_workers: 4
+  log_dir: "runs/exp_dpt_swin_v3"
+
+loss:
+  type: "dice_ce"
+  dice_weight: 1.0
+  ce_weight: 1.0
+  class_weights: [0.1, 1.0, 1.0, 1.0]
+
+output:
+  ckpt_dir: checkpoints/exp_dpt_swin_v3

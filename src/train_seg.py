@@ -1,5 +1,6 @@
 import os
 import math
+import re
 import time
 import yaml
 import torch
@@ -110,17 +111,58 @@ def main(cfg_path="configs/seg.yaml"):
             class_weights = torch.tensor(class_weights, dtype=torch.float32).to(device)
         criterion = nn.CrossEntropyLoss(weight=class_weights)
 
+    if t.get("llrd", False):
+        # LLRD (layer-wise LR decay,15-oct-2026): capas profundas del encoder
+        # con LR menor, decoder/cabecera con LR base. Para Swin via smp DPT los
+        # stages del encoder se llaman encoder.model.layers.{0..3}.
+        decay = t.get("llrd_decay", 0.75)
+        groups = {}
+        for name, p in model.named_parameters():
+            if not p.requires_grad:
+                continue
+            m = re.search(r"encoder\.model\.layers\.(\d+)\.", name)
+            if m:
+                k = int(m.group(1))
+                lr = t["lr"] * (decay ** max(3 - k, 0))
+            elif "encoder.model.patch_embed" in name:
+                lr = t["lr"] * (decay ** 4)   # entrada del encoder (lo mas profundo)
+            else:
+                lr = t["lr"]                   # decoder, cabecera, norms top
+            groups.setdefault(lr, []).append(p)
+        param_groups = [{"params": ps, "lr": lr} for lr, ps in groups.items()]
+        print("  -> LLRD:", [(f"{g['lr']:.2e}x{len(g['params'])}p") for g in param_groups])
+    else:
+        param_groups = model.parameters()
     optimizer = torch.optim.AdamW(
-        model.parameters(), lr=t["lr"],
+        param_groups, lr=t["lr"],
         weight_decay=t.get("weight_decay", 1e-4))
     
-    total_steps = max(t["epochs"] * len(train_dl), 1)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=total_steps)
     precision = t.get("precision", "fp16")
     amp_dtype = torch.bfloat16 if precision == "bf16" else torch.float16
     use_amp = use_cuda and precision != "fp32"
     scaler = torch.amp.GradScaler('cuda', enabled=(use_cuda and precision == "fp16"))
     accum = t.get("grad_accum", 1)
+
+    # Scheduler (fix 15-oct-2026): scheduler.step() corre 1 de cada `accum`
+    # micro-pasos, asi que T_max debe contener pasos de OPTIMIZADOR, no de batch.
+    # Antes: T_max = epochs*len(train_dl) -> el coseno solo recorria 1/4 del arco
+    # y el LR terminaba al 85% del pico (nunca anealaba).
+    steps_per_epoch = max(math.ceil(len(train_dl) / accum), 1)
+    total_steps = max(t["epochs"] * steps_per_epoch, 1)
+    warmup_epochs = int(t.get("warmup_epochs", 0))
+    if warmup_epochs > 0:
+        warmup_steps = min(warmup_epochs * steps_per_epoch, total_steps - 1)
+        sched_warm = torch.optim.lr_scheduler.LinearLR(
+            optimizer, start_factor=0.01, total_iters=warmup_steps)
+        sched_cos = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=max(total_steps - warmup_steps, 1))
+        scheduler = torch.optim.lr_scheduler.SequentialLR(
+            optimizer, [sched_warm, sched_cos], milestones=[warmup_steps])
+        print(f"  -> scheduler: {warmup_epochs} ep warmup (0.01x->1x) + cosine "
+              f"({total_steps} pasos optimizer, {steps_per_epoch}/ep)")
+    else:
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=total_steps)
+        print(f"  -> scheduler: cosine {total_steps} pasos optimizer ({steps_per_epoch}/ep)")
     
     # Transfer learning: freeze encoder epochs
     freeze_epochs = cfg["model"].get("freeze_encoder_epochs", 0)
@@ -134,6 +176,9 @@ def main(cfg_path="configs/seg.yaml"):
     state_path = os.path.join(ckpt_dir, "train_state.pt")
     restores = 0
     for epoch in range(1, t["epochs"] + 1):
+        # aug v2: las ventanas de train dependen de la epoch (dataset.set_epoch)
+        if hasattr(train_dl.dataset, "set_epoch"):
+            train_dl.dataset.set_epoch(epoch)
         # Handle encoder freezing/unfreezing
         if epoch == freeze_epochs + 1 and freeze_epochs > 0:
             freeze_encoder(model, freeze=False)

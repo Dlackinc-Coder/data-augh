@@ -103,12 +103,18 @@ def evaluate(model, loader, device, half=True, save_overlays=False,
     model.eval()
     dices, ious = [], []
     candidates = []
+    bad_batches = 0
     for imgs, masks in loader:
         imgs, masks = imgs.to(device), masks.to(device)
-        with torch.amp.autocast('cuda', enabled=half):
-            logits = get_logits(model, imgs)
-        dices.append(dice_multiclass(logits.float(), masks))
-        ious.append(iou_multiclass(logits.float(), masks))
+        # fp32 exacto sin autocast: evita los NaN/Inf que Swin/ViT producen en fp16
+        # (los resultados son identicos a bf16/fp32 verificado en los 4 modelos)
+        logits = get_logits(model, imgs)
+        logits_f = logits.float()
+        if not torch.isfinite(logits_f).all():
+            bad_batches += 1
+            continue
+        dices.append(dice_multiclass(logits_f, masks))
+        ious.append(iou_multiclass(logits_f, masks))
         if save_overlays or save_1panel:
             preds = logits.float().argmax(dim=1)
             for b in range(imgs.shape[0]):
@@ -141,7 +147,7 @@ def evaluate(model, loader, device, half=True, save_overlays=False,
             Image.fromarray(ov1).save(
                 os.path.join(panel_dir, f"panel_{i:03d}.png"))
 
-    return sum(dices) / len(dices), sum(ious) / len(ious), len(candidates)
+    return sum(dices) / len(dices), sum(ious) / len(ious), len(candidates), bad_batches
 
 
 if __name__ == "__main__":
@@ -157,6 +163,7 @@ if __name__ == "__main__":
     min_tissue = 0.05
     sampling_override = None
     ckpt_override = None
+    outdir_override = None
     for a in list(args):
         if a.startswith("--min-tissue="):
             min_tissue = float(a.split("=")[1])
@@ -166,6 +173,9 @@ if __name__ == "__main__":
             args.remove(a)
         elif a.startswith("--ckpt="):
             ckpt_override = a.split("=", 1)[1]
+            args.remove(a)
+        elif a.startswith("--outdir="):
+            outdir_override = a.split("=", 1)[1]
             args.remove(a)
 
     cfg = load_cfg(args[0] if args else "configs/seg.yaml")
@@ -179,15 +189,18 @@ if __name__ == "__main__":
                       map_location=device, weights_only=False)
     model.load_state_dict(ckpt["model"])
 
-    overlay_dir = os.path.join(PROJECT_ROOT, "runs", "test_overlays")
-    panel_dir = os.path.join(PROJECT_ROOT, "runs", "test_overlays_1panel")
-    d, i, n_cand = evaluate(model, test_dl, device,
+    base_dir = outdir_override or os.path.join("runs", "test_overlays")
+    overlay_dir = os.path.join(PROJECT_ROOT, base_dir)
+    panel_dir = overlay_dir + "_1panel"
+    d, i, n_cand, bad = evaluate(model, test_dl, device,
                              save_overlays=True, overlay_dir=overlay_dir,
                              save_1panel=save_1panel,
                              panel_dir=panel_dir if save_1panel else None,
                              min_tissue_ratio=min_tissue)
     print(f"TEST | dice {d:.4f} | iou {i:.4f} "
           f"(ckpt epoch {ckpt.get('epoch')})")
+    if bad:
+        print(f"AVISO: {bad} batches con logits no-finitos descartados")
     print(f"tiles con tejido >= {min_tissue:.0%}: {n_cand} "
           f"-> guardados {min(64, n_cand)}")
     print(f"overlays 3 paneles: {overlay_dir}/")

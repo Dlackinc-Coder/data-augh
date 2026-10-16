@@ -11,12 +11,14 @@ from albumentations.pytorch import ToTensorV2
 class TileDataset(data.Dataset):
     def __init__(self, root, split, tile_size, stride, tiles_per_image=8, augment=False, seed=42,
                  sampling_strategy="random", min_tissue_ratio=0.05, exploration_rate=0.1,
-                 max_attempts=20, jitter_px=32):
+                 max_attempts=20, jitter_px=32, aug_version=1):
         self.root = os.path.join(root, split)
         self.tile_size = tile_size
         self.stride = stride
         self.tiles_per_image = tiles_per_image
         self.augment = augment
+        self.aug_version = aug_version
+        self.epoch = 0
         self.seed = seed
         self.sampling_strategy = sampling_strategy
         self.min_tissue_ratio = min_tissue_ratio
@@ -37,16 +39,29 @@ class TileDataset(data.Dataset):
             self.prob_maps = self._build_prob_maps()
         
         if augment:
-            self.transform = A.Compose([
+            tf_list = [
                 A.HorizontalFlip(p=0.5),
                 A.VerticalFlip(p=0.5),
                 A.RandomRotate90(p=0.5),
                 A.Affine(translate_percent=0.1, scale=(0.8, 1.2), rotate=(-15, 15), p=0.7),
                 A.GaussNoise(std_range=(0.01, 0.03), p=0.3),
                 A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.3),
+            ]
+            if aug_version >= 2:
+                # aug v2 (15-oct-2026): deformacion tipo gelatina + variacion de
+                # tinte/gamma (la tincion TTC/Evans Blue varia entre cortes).
+                # mask_interpolation por defecto = NEAREST -> etiquetas intactas.
+                tf_list += [
+                    A.GridDistortion(distort_limit=(-0.15, 0.15), p=0.3),
+                    A.HueSaturationValue(hue_shift_limit=10, sat_shift_limit=15,
+                                         val_shift_limit=10, p=0.3),
+                    A.RandomGamma(gamma_limit=(90, 110), p=0.2),
+                ]
+            tf_list += [
                 A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
                 ToTensorV2(),
-            ])
+            ]
+            self.transform = A.Compose(tf_list)
         else:
             self.transform = A.Compose([
                 A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
@@ -114,6 +129,10 @@ class TileDataset(data.Dataset):
     def __len__(self):
         return len(self.image_files) * self.tiles_per_image
     
+    def set_epoch(self, epoch):
+        """Fija la epoch actual para que las ventanas de train varien."""
+        self.epoch = int(epoch)
+    
     def __getitem__(self, idx):
         img_idx = idx // self.tiles_per_image
         tile_idx = idx % self.tiles_per_image
@@ -132,8 +151,15 @@ class TileDataset(data.Dataset):
         if max_y <= 0 or max_x <= 0:
             raise ValueError(f"Image {img_path} smaller than tile_size")
         
-        random.seed(self.seed + idx)
-        np.random.seed(self.seed + idx)
+        # aug v2: las ventanas de train varian de epoch en epoch (antes eran
+        # siempre las mismas 8 recortes por imagen). Determinista por
+        # (seed, idx, epoch); val/test (augment=False) quedan fijos.
+        if self.augment and self.aug_version >= 2:
+            s = (self.seed + idx + (self.epoch + 1) * 1000003) % (2**31 - 1)
+        else:
+            s = (self.seed + idx) % (2**31 - 1)
+        random.seed(s)
+        np.random.seed(s)
         
         if self.sampling_strategy == "guided":
             y, x = self._guided_sample(img_idx, mask, max_y, max_x)
@@ -173,7 +199,8 @@ def make_loaders(cfg):
     tiles = ds_cfg.get("tiles_per_image", 8)
     seed = cfg.get("seed", 42)
     train = TileDataset(**common, split="train", augment=True,
-                        tiles_per_image=tiles, seed=seed, **sampling_kwargs)
+                        tiles_per_image=tiles, seed=seed,
+                        aug_version=ds_cfg.get("aug_version", 1), **sampling_kwargs)
     val = TileDataset(**common, split="val", augment=False,
                       tiles_per_image=tiles, seed=seed, **sampling_kwargs)
     test = TileDataset(**common, split="test", augment=False,

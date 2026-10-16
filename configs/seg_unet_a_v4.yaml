@@ -1,0 +1,39 @@
+# A-v4: receta ORIGINAL del modelo A (CE puro, sin freeze, fp16) + fix de
+# scheduler + aug v2 (ventanas por epoch + elastic + tinte).
+# Mide el efecto PURO de la augmentacion sobre la CNN y da el mejor ckpt A
+# para el ensemble. NO guided sampling (D/E/F = 0.526 en test random).
+seed: 42
+ckpt_dir: checkpoints/exp_unet_a_v4
+
+dataset:
+  root: "data/mouse_cardiac"
+  tile_size: 512
+  stride: 512
+  tiles_per_image: 8
+  aug_version: 2
+
+model:
+  name: "unet"
+  encoder: "efficientnet-b0"
+  encoder_weights: "imagenet"
+  classes: 4
+
+train:
+  epochs: 100
+  optimizer: "adamw"
+  lr: 0.0003
+  weight_decay: 0.0001
+  scheduler: "cosine"
+  warmup_epochs: 0
+  amp: true
+  precision: "fp16"
+  batch_size: 2
+  grad_accum: 4
+  num_workers: 4
+  log_dir: "runs/exp_unet_a_v4"
+
+loss:
+  type: "crossentropy"
+
+output:
+  ckpt_dir: checkpoints/exp_unet_a_v4

@@ -1,0 +1,38 @@
+# A-v3: receta ORIGINAL del modelo A (Dice 0.9400) con UNICO cambio:
+# fix de scheduler (cosine en pasos de optimizer, sin warmup).
+# No: freeze, dice_ce, class_weights, warmup, bf16 (todos probados en A-v2 = 0.8969).
+seed: 42
+ckpt_dir: checkpoints/exp_unet_a_v3
+
+dataset:
+  root: "data/mouse_cardiac"
+  tile_size: 512
+  stride: 512
+  tiles_per_image: 8
+  aug_version: 1
+
+model:
+  name: "unet"
+  encoder: "efficientnet-b0"
+  encoder_weights: "imagenet"
+  classes: 4
+
+train:
+  epochs: 100
+  optimizer: "adamw"
+  lr: 0.0003
+  weight_decay: 0.0001
+  scheduler: "cosine"
+  warmup_epochs: 0
+  amp: true
+  precision: "fp16"
+  batch_size: 2
+  grad_accum: 4
+  num_workers: 4
+  log_dir: "runs/exp_unet_a_v3"
+
+loss:
+  type: "crossentropy"
+
+output:
+  ckpt_dir: checkpoints/exp_unet_a_v3

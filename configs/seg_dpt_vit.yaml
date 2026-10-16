@@ -1,0 +1,39 @@
+seed: 42
+ckpt_dir: checkpoints/exp_dpt_vit
+
+dataset:
+  root: "data/mouse_cardiac"
+  tile_size: 512
+  stride: 512
+  tiles_per_image: 8
+
+model:
+  name: "dpt"
+  encoder: "tu-vit_base_patch16_224"
+  encoder_weights: "imagenet"
+  encoder_kwargs: {img_size: 512}
+  readout: "cat"
+  freeze_encoder_epochs: 15
+  classes: 4
+
+train:
+  epochs: 100
+  optimizer: "adamw"
+  lr: 0.0003
+  weight_decay: 0.0001
+  scheduler: "cosine"
+  amp: true
+  precision: "bf16"
+  batch_size: 2
+  grad_accum: 4
+  num_workers: 4
+  log_dir: "runs/exp_dpt_vit"
+
+loss:
+  type: "dice_ce"
+  dice_weight: 1.0
+  ce_weight: 1.0
+  class_weights: [0.1, 1.0, 1.0, 1.0]
+
+output:
+  ckpt_dir: "checkpoints/exp_dpt_vit"
