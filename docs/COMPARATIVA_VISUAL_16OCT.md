@@ -29,18 +29,39 @@ imagen completa (mismo kit para todos):
 *HD/HD95 no comparable directamente (granularidad del paper no especificada);
 detalle y análisis en `HALLAZGOS_16OCT.md §5`.*
 
-## 3. El camino al cierre
+## 3. ¿Funciona de verdad? — 4 casos reales del test
+
+Selección por **percentil de AVG3** sobre las 37 imágenes de test (sin
+cherry-picking): percentil 85, mediana, percentil 15 y —por transparencia— el
+**peor caso**. Recorte alrededor del corazón; la predicción incluye la limpieza
+final (el mismo protocolo del 81.21). Colores: **LV verde · AAR azul · IS rojo**.
+Los Dice de cada pie están recalculados con el kit honesto sobre la predicción
+limpia (sanity-check: media de los 37 = 81.21 exacto).
+
+![Caso P85](img/caso_01_p85.png)
+
+![Caso mediana](img/caso_02_mediana.png)
+
+![Caso P15](img/caso_03_p15.png)
+
+![Peor caso](img/caso_04_peor.png)
+
+*El peor caso (id 236) muestra un fallo real: la IA sobre-predice LV (verde)
+donde el GT tiene AAR (azul) — LV 2.7. Incluso ahí, el IS —la clase donde
+ganamos al SOTA (+3.00)— se detecta bien (81.8).*
+
+## 4. El camino al cierre
 
 ![Camino](img/camino.png)
 
 Ensemble U-Net+Swin (α=0.5) + TTA flips×4 + limpieza de islas (<4000 px).
 Elegido en **val** (regla pre-registrada) y aplicado **una sola vez** en test.
 
-## 4. Panorama completo (test, protocolo honesto)
+## 5. Panorama completo (test, protocolo honesto)
 
 ![Panorama](img/panorama.png)
 
-## 5. Cambios clave del proyecto
+## 6. Cambios clave del proyecto
 
 | # | Cambio | Para qué |
 |---|---|---|
