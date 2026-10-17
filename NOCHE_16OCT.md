@@ -94,4 +94,6 @@ Tabla completa en `runs/eval_honest/SUMMARY.md` → copia `COMPARATIVA_HONESTA.m
 - Tabla agregada: `runs/eval_honest/SUMMARY.md` y `COMPARATIVA_HONESTA.md`.
 - Log de la cola: `runs/honest_eval_chain.log`.
 - Protocolo vs paper: `docs/protocolo-duchnet-vs-mio.md`.
+- Resultados honestos de test (9/9 + TTA + ensembles), selección de protocolo en
+  val y protocolo congelado aplicado en test: `docs/HALLAZGOS_16OCT.md`.
 - TensorBoard: `http://ubuntu:6006` (logdir_spec: proyectos + git).
