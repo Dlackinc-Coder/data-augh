@@ -1,7 +1,9 @@
 import os
+import random
 import sys
 import time
 import yaml
+import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from torchvision.utils import save_image
@@ -18,13 +20,24 @@ def resolve(path):
 
 def load_cfg(path="configs/pix2pix.yaml"):
     with open(resolve(path)) as f:
-        return yaml.safe_load(f)
+        cfg = yaml.safe_load(f)
+    ckpt = cfg.get("ckpt_dir") or (cfg.get("output") or {}).get("ckpt_dir") or "checkpoints/pix2pix"
+    cfg["ckpt_dir"] = ckpt
+    return cfg
+
+
+def seed_everything(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
 
 def main(cfg_path="configs/pix2pix.yaml"):
     cfg = load_cfg(cfg_path)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    torch.manual_seed(cfg.get("seed", 42))
+    seed_everything(cfg.get("seed", 42))
 
     ds_root = resolve(cfg["dataset"]["root"])
     train_ds = Pix2PixTileDataset(ds_root, "train",
@@ -34,16 +47,18 @@ def main(cfg_path="configs/pix2pix.yaml"):
     val_ds = Pix2PixTileDataset(ds_root, "val",
                                 tile_size=cfg["dataset"]["tile_size"],
                                 augment=False)
-    train_dl = DataLoader(train_ds, batch_size=cfg["train"]["batch_size"],
-                          shuffle=True, num_workers=4, pin_memory=True,
+    t = cfg["train"]
+    num_workers = t.get("num_workers", 4)
+    train_dl = DataLoader(train_ds, batch_size=t["batch_size"],
+                          shuffle=True, num_workers=num_workers, pin_memory=True,
                           drop_last=True)
-    val_dl = DataLoader(val_ds, batch_size=4, shuffle=False, num_workers=4)
+    val_dl = DataLoader(val_ds, batch_size=t.get("val_batch_size", 4),
+                        shuffle=False, num_workers=num_workers)
 
     net = Pix2PixModel(cfg, device)
-    t = cfg["train"]
     epochs = t["epochs"]
-    ckpt_dir = resolve(cfg.get("ckpt_dir", "checkpoints/pix2pix"))
-    sample_dir = os.path.join(PROJECT_ROOT, "runs", "pix2pix_samples")
+    ckpt_dir = resolve(cfg["ckpt_dir"])
+    sample_dir = resolve(cfg.get("log_dir", "runs/pix2pix_samples"))
     os.makedirs(ckpt_dir, exist_ok=True)
     os.makedirs(sample_dir, exist_ok=True)
 

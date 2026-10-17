@@ -50,17 +50,34 @@ pip install -r requirements.txt
 
 ## Entrenamiento
 
-### 1. Segmentador (U-Net efficientnet-b0)
+### 1. Segmentador
 
 ```bash
 cd src
 python train_seg.py ../configs/seg.yaml
 tensorboard --logdir ../runs
-python eval.py ../configs/seg.yaml        # Dice/IoU en test
+python eval.py ../configs/seg.yaml               # Dice/IoU + per-class en test
+python eval.py ../configs/seg.yaml --save-1panel # + overlays 1 panel
 ```
 
 Batch 2 a 512² con AMP + grad_accum 4 (batch efectivo 8) ≈ 4–5 GB VRAM.
 ~10–15 min/epoch en RTX 4060.
+
+Features de `train_seg.py` (config en `train:`):
+
+| clave | default | descripción |
+|-------|---------|-------------|
+| `precision` | `auto` | `auto` usa bf16 en GPUs compatibles (evita NaN de fp16); también `fp16`/`bf16`/`fp32` |
+| `optimizer` | `adamw` | `adamw` / `adam` / `sgd` |
+| `scheduler` | `cosine` | `cosine` / `step` / `none` |
+| `label_smoothing` | `0.0` | suavizado en la CE |
+| `grad_clip_norm` | `1.0` | clip de gradiente |
+| `resume` | `false` | reanuda desde `checkpoints/.../train_state.pt` |
+| `gradient_checkpointing` | `false` | solo modelos HF (SegFormer) |
+
+Transfer learning: `model.freeze_encoder_epochs: N` congela el encoder las
+primeras N épocas y lo descongela automáticamente. `model.tinyvit` permite
+sobreescribir hiperparámetros del encoder TinyViT (LiteMedSAM).
 
 ### 2. Generador pix2pix (máscara → imagen)
 
@@ -83,15 +100,14 @@ Máscaras en gris, valores 0–3 (recorte/limpieza de ruido JPEG aplicado en có
 
 ## Verificación
 
-Smoke tests pasados (CPU, 08-oct-2026):
+Smoke tests pasados:
 
-- `TileDataset`/`make_loaders`: tiles 512² con clases {0..3} y ruido JPEG limpio
-- `train_seg.py`: 1 época mini → checkpoint `best.pt`/`last.pt` + logs TensorBoard
-- `eval.py`: carga checkpoint y calcula Dice/IoU
-- pix2pix: forward 512² (G 41.8M + D 2.8M params), `train_step` (LSGAN+L1),
-  loop 1 época → `pix2pix_last.pt` + muestras PNG en `runs/pix2pix_samples/`
-
-Pendiente de probar en GPU (RTX 4060): VRAM batch 2 + AMP (seg) y batch 1 (pix2pix).
+- (CPU, 08-oct-2026) `TileDataset`/`make_loaders`, `train_seg.py`, `eval.py`, pix2pix
+- (CPU, 16-oct-2026, post-fixes) UNet 3 épocas con freeze/unfreeze + label smoothing;
+  resume desde `train_state.pt` (epoch 3 → 4); LiteMedSAM con guided sampling +
+  encoder weights; eval con `weights_only=True` + métricas per-class; pix2pix dataset
+- Nota: el fix de augmentación (sin reseeding por índice) hace que cada época vea
+  augmentaciones distintas; los runs previos a este fix veían las mismas cada época.
 
 ## Licencia de código
 

@@ -1,8 +1,20 @@
+"""Evaluation for mouse cardiac slice segmentation.
+
+Computes global (confusion-matrix based) macro Dice/IoU plus per-class
+metrics on the test split, and saves visualization overlays for the tiles
+with the most tissue (top-k bounded, so memory stays constant).
+"""
+
+import argparse
+import heapq
+import itertools
 import os
-import torch
-import torch.nn.functional as F
+
 import numpy as np
+import torch
 from PIL import Image
+
+from seg_model import build_model, get_logits
 
 CLASS_COLORS = np.array([
     [0, 0, 0],        # 0 background
@@ -20,9 +32,12 @@ OVERLAY_COLORS = np.array([
 
 OVERLAY_ALPHA = [0.0, 0.35, 0.40, 0.50]
 
+CLASS_NAMES = ["bg", "LV", "AAR", "IS"]
+
 
 def dice_multiclass(logits, targets, eps=1e-6, ignore_index=None):
-    probs = torch.softmax(logits, dim=1)
+    """Mean Dice over classes present in the batch (skips empty classes)."""
+    probs = torch.softmax(logits.float(), dim=1)
     pred = probs.argmax(dim=1)
     num_classes = probs.shape[1]
     dices = []
@@ -41,7 +56,8 @@ def dice_multiclass(logits, targets, eps=1e-6, ignore_index=None):
 
 
 def iou_multiclass(logits, targets, eps=1e-6):
-    pred = logits.argmax(dim=1)
+    """Mean IoU over classes present in the batch (skips empty classes)."""
+    pred = logits.float().argmax(dim=1)
     num_classes = logits.shape[1]
     ious = []
     for c in range(num_classes):
@@ -53,6 +69,28 @@ def iou_multiclass(logits, targets, eps=1e-6):
     if not ious:
         return 0.0
     return torch.stack(ious).mean().item()
+
+
+def per_class_metrics(cm, num_classes, eps=1e-6):
+    """Per-class Dice/IoU from a KxK confusion matrix (rows=GT, cols=pred).
+
+    Returns dict: class index -> {"dice", "iou", "support"} (None if absent).
+    """
+    out = {}
+    for c in range(num_classes):
+        tp = cm[c, c].item()
+        fn = cm[c, :].sum().item() - tp
+        fp = cm[:, c].sum().item() - tp
+        support = cm[c, :].sum().item()
+        if tp + fp + fn == 0:
+            out[c] = None
+            continue
+        out[c] = {
+            "dice": (2 * tp + eps) / (2 * tp + fp + fn + eps),
+            "iou": (tp + eps) / (tp + fp + fn + eps),
+            "support": support,
+        }
+    return out
 
 
 def mask_to_color(mask):
@@ -84,112 +122,145 @@ def make_overlay_1panel(img_t, pred_mask):
     return np.clip(out, 0, 255).astype(np.uint8)
 
 
-def get_logits(model, imgs):
-    """Extract logits from model output (handles different model types)."""
-    out = model(imgs)
-    if hasattr(out, 'logits'):
-        logits = out.logits  # HF SegFormer
-    else:
-        logits = out  # smp.Unet or raw tensor
-    if logits.shape[-2:] != imgs.shape[-2:]:
-        logits = F.interpolate(logits, size=imgs.shape[-2:], mode="bilinear", align_corners=False)
-    return logits
+def _clean_dir(dir_path, prefix):
+    """Remove only overlay files previously written by this script."""
+    if not os.path.isdir(dir_path):
+        return
+    for f in os.listdir(dir_path):
+        if f.startswith(prefix) and f.endswith(".png"):
+            os.remove(os.path.join(dir_path, f))
 
 
 @torch.no_grad()
-def evaluate(model, loader, device, half=True, save_overlays=False,
-             overlay_dir=None, save_1panel=False, panel_dir=None,
-             max_overlays=64, min_tissue_ratio=0.05):
+def evaluate(model, loader, device, use_amp=False, amp_dtype=torch.bfloat16,
+             save_overlays=False, overlay_dir=None, save_1panel=False,
+             panel_dir=None, max_overlays=64, min_tissue_ratio=0.05):
+    """Evaluate a model on a loader.
+
+    Returns dict with macro dice/iou, per-class metrics (confusion matrix
+    based) and the number of candidate tiles found.
+    """
     model.eval()
-    dices, ious = [], []
-    candidates = []
+    num_classes = None
+    cm = None
+    candidate_heap = []
+    counter = itertools.count()
+
     for imgs, masks in loader:
         imgs, masks = imgs.to(device), masks.to(device)
-        with torch.amp.autocast('cuda', enabled=half):
-            logits = get_logits(model, imgs)
-        dices.append(dice_multiclass(logits.float(), masks))
-        ious.append(iou_multiclass(logits.float(), masks))
+        with torch.amp.autocast('cuda', enabled=use_amp, dtype=amp_dtype):
+            logits = get_logits(model, imgs, target_size=imgs.shape[-2:])
+        logits = logits.float()
+        if num_classes is None:
+            num_classes = logits.shape[1]
+            cm = torch.zeros(num_classes, num_classes, dtype=torch.float64)
+        preds = logits.argmax(dim=1)
+        flat = (num_classes * masks + preds).view(-1).cpu()
+        cm += torch.bincount(flat, minlength=num_classes ** 2).reshape(
+            num_classes, num_classes).to(torch.float64)
+
         if save_overlays or save_1panel:
-            preds = logits.float().argmax(dim=1)
             for b in range(imgs.shape[0]):
                 mask_np = masks[b].cpu().numpy()
                 tissue = float((mask_np != 0).mean())
                 if tissue >= min_tissue_ratio:
-                    candidates.append(
-                        (tissue, imgs[b].cpu(), mask_np,
-                         preds[b].cpu().numpy()))
+                    item = (tissue, next(counter),
+                            (imgs[b].cpu(), mask_np, preds[b].cpu().numpy()))
+                    if len(candidate_heap) < max_overlays:
+                        heapq.heappush(candidate_heap, item)
+                    else:
+                        heapq.heappushpop(candidate_heap, item)
 
+    if cm is None:
+        raise RuntimeError("Empty loader: nothing to evaluate")
+
+    per_class = per_class_metrics(cm, num_classes)
+    present = [v for v in per_class.values() if v is not None]
+    macro_dice = float(np.mean([v["dice"] for v in present])) if present else 0.0
+    macro_iou = float(np.mean([v["iou"] for v in present])) if present else 0.0
+
+    candidates = sorted(candidate_heap, key=lambda c: -c[0])
     if save_overlays and overlay_dir:
         os.makedirs(overlay_dir, exist_ok=True)
-        for f in os.listdir(overlay_dir):
-            if f.endswith(".png"):
-                os.remove(os.path.join(overlay_dir, f))
+        _clean_dir(overlay_dir, "overlay_")
     if save_1panel and panel_dir:
         os.makedirs(panel_dir, exist_ok=True)
-        for f in os.listdir(panel_dir):
-            if f.endswith(".png"):
-                os.remove(os.path.join(panel_dir, f))
+        _clean_dir(panel_dir, "panel_")
 
-    candidates.sort(key=lambda c: -c[0])
-    for i, (tissue, img_t, gt, pred) in enumerate(candidates[:max_overlays]):
+    for i, (tissue, _, (img_t, gt, pred)) in enumerate(candidates[:max_overlays]):
         if save_overlays and overlay_dir:
             ov = make_overlay(img_t, gt, pred)
-            Image.fromarray(ov).save(
-                os.path.join(overlay_dir, f"overlay_{i:03d}.png"))
+            Image.fromarray(ov).save(os.path.join(overlay_dir, f"overlay_{i:03d}.png"))
         if save_1panel and panel_dir:
             ov1 = make_overlay_1panel(img_t, pred)
-            Image.fromarray(ov1).save(
-                os.path.join(panel_dir, f"panel_{i:03d}.png"))
+            Image.fromarray(ov1).save(os.path.join(panel_dir, f"panel_{i:03d}.png"))
 
-    return sum(dices) / len(dices), sum(ious) / len(ious), len(candidates)
+    return {
+        "dice": macro_dice,
+        "iou": macro_iou,
+        "per_class": per_class,
+        "n_candidates": len(candidate_heap),
+        "num_classes": num_classes,
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Evaluate a segmentation checkpoint")
+    parser.add_argument("config", nargs="?", default="configs/seg.yaml")
+    parser.add_argument("--save-1panel", action="store_true",
+                        help="also save 1-panel alpha-blended overlays")
+    parser.add_argument("--min-tissue", type=float, default=0.05,
+                        help="minimum tissue ratio for a tile to be saved")
+    parser.add_argument("--sampling", default=None,
+                        help="override dataset sampling strategy (random|guided)")
+    parser.add_argument("--ckpt", default=None, help="checkpoint path override")
+    args = parser.parse_args()
+
+    from train_seg import load_cfg, PROJECT_ROOT, resolve_precision
+    from dataset import make_loaders
+
+    cfg = load_cfg(args.config)
+    if args.sampling:
+        cfg.setdefault("dataset", {}).setdefault("sampling", {})["strategy"] = args.sampling
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    _, _, test_dl = make_loaders(cfg)
+
+    t = cfg.get("train", cfg.get("training", {}))
+    precision, amp_dtype = resolve_precision(t, device.type == "cuda")
+    use_amp = device.type == "cuda" and precision != "fp32"
+
+    model = build_model(cfg).to(device)
+    ckpt_path = args.ckpt or cfg.get(
+        "ckpt_path", os.path.join(cfg["ckpt_dir"], "best.pt"))
+    ckpt = torch.load(ckpt_path, map_location=device, weights_only=True)
+    model.load_state_dict(ckpt["model"])
+
+    max_overlays = cfg.get("eval", {}).get("max_overlays", 64)
+    overlay_dir = os.path.join(PROJECT_ROOT, "runs", "test_overlays")
+    panel_dir = os.path.join(PROJECT_ROOT, "runs", "test_overlays_1panel")
+    res = evaluate(model, test_dl, device, use_amp=use_amp, amp_dtype=amp_dtype,
+                   save_overlays=True, overlay_dir=overlay_dir,
+                   save_1panel=args.save_1panel,
+                   panel_dir=panel_dir if args.save_1panel else None,
+                   max_overlays=max_overlays,
+                   min_tissue_ratio=args.min_tissue)
+    print(f"TEST | dice {res['dice']:.4f} | iou {res['iou']:.4f} "
+          f"(ckpt epoch {ckpt.get('epoch')})")
+    parts = []
+    for c, v in res["per_class"].items():
+        name = CLASS_NAMES[c] if c < len(CLASS_NAMES) else f"cls{c}"
+        if v is None:
+            parts.append(f"{name}: n/a")
+        else:
+            parts.append(f"{name}: dice {v['dice']:.4f} iou {v['iou']:.4f} "
+                         f"(n={int(v['support'])})")
+    print("PER-CLASS | " + " | ".join(parts))
+    print(f"tiles con tejido >= {args.min_tissue:.0%}: {res['n_candidates']} "
+          f"-> guardados {min(max_overlays, res['n_candidates'])}")
+    print(f"overlays 3 paneles: {overlay_dir}/")
+    if args.save_1panel:
+        print(f"overlays 1 panel: {panel_dir}/")
 
 
 if __name__ == "__main__":
-    import sys
-    sys.path.insert(0, ".")
-    from train_seg import load_cfg, PROJECT_ROOT
-    from dataset import make_loaders
-    from seg_model import build_model
-
-    args = sys.argv[1:]
-    save_1panel = "--save-1panel" in args
-    args = [a for a in args if a != "--save-1panel"]
-    min_tissue = 0.05
-    sampling_override = None
-    ckpt_override = None
-    for a in list(args):
-        if a.startswith("--min-tissue="):
-            min_tissue = float(a.split("=")[1])
-            args.remove(a)
-        elif a.startswith("--sampling="):
-            sampling_override = a.split("=")[1]
-            args.remove(a)
-        elif a.startswith("--ckpt="):
-            ckpt_override = a.split("=", 1)[1]
-            args.remove(a)
-
-    cfg = load_cfg(args[0] if args else "configs/seg.yaml")
-    if sampling_override:
-        cfg.setdefault("dataset", {}).setdefault("sampling", {})["strategy"] = sampling_override
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    _, _, test_dl = make_loaders(cfg)
-    model = build_model(cfg).to(device)
-    ckpt = torch.load(ckpt_override or cfg.get("ckpt_path",
-                              os.path.join(cfg["ckpt_dir"], "best.pt")),
-                      map_location=device, weights_only=False)
-    model.load_state_dict(ckpt["model"])
-
-    overlay_dir = os.path.join(PROJECT_ROOT, "runs", "test_overlays")
-    panel_dir = os.path.join(PROJECT_ROOT, "runs", "test_overlays_1panel")
-    d, i, n_cand = evaluate(model, test_dl, device,
-                             save_overlays=True, overlay_dir=overlay_dir,
-                             save_1panel=save_1panel,
-                             panel_dir=panel_dir if save_1panel else None,
-                             min_tissue_ratio=min_tissue)
-    print(f"TEST | dice {d:.4f} | iou {i:.4f} "
-          f"(ckpt epoch {ckpt.get('epoch')})")
-    print(f"tiles con tejido >= {min_tissue:.0%}: {n_cand} "
-          f"-> guardados {min(64, n_cand)}")
-    print(f"overlays 3 paneles: {overlay_dir}/")
-    if save_1panel:
-        print(f"overlays 1 panel: {panel_dir}/")
+    main()

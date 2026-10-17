@@ -5,7 +5,26 @@ import torch.nn.functional as F
 import os
 
 
+def get_logits(model, imgs, target_size=None):
+    """Extract logits from any model in this module.
+
+    Handles HF SegFormer (``output.logits``), smp models and raw tensors,
+    optionally resizing logits to ``target_size`` (bilinear).
+    """
+    out = model(imgs)
+    if hasattr(out, 'logits'):
+        logits = out.logits  # HF SegFormer
+    else:
+        logits = out  # smp.Unet or raw tensor
+
+    if target_size is not None and logits.shape[-2:] != target_size:
+        logits = F.interpolate(logits, size=target_size, mode='bilinear',
+                               align_corners=False)
+    return logits
+
+
 def build_unet(cfg):
+    """U-Net (smp) with configurable encoder, 4-class output."""
     m = cfg["model"]
     enc = m.get("encoder", "efficientnet-b0")
     weights = m.get("encoder_weights", "imagenet")
@@ -21,6 +40,7 @@ def build_unet(cfg):
 
 
 def build_segformer(cfg):
+    """SegFormer (HF transformers) with MiT-B0..B5 encoder, 4-class output."""
     from transformers import SegformerForSemanticSegmentation
     
     m = cfg["model"]
@@ -63,6 +83,13 @@ def build_segformer(cfg):
 
 
 class LiteMedSAMSeg(nn.Module):
+    """TinyViT encoder + lightweight CNN decoder for prompt-free segmentation.
+
+    The TinyViT encoder is fixed to its 256x256 pretraining resolution
+    (window attention); inputs are downsampled to 256 and outputs are
+    upsampled back to the original size. Decoder channels: 256->128->64->32.
+    """
+
     def __init__(self, encoder, num_classes=4):
         super().__init__()
         self.encoder = encoder
@@ -98,8 +125,15 @@ class LiteMedSAMSeg(nn.Module):
             logits = F.interpolate(logits, size=(H, W), mode="bilinear", align_corners=False)
         return logits
 
+    def no_weight_decay_keywords(self):
+        """Forward TinyViT's no-decay parameter keywords (e.g. attention_biases)."""
+        if hasattr(self.encoder, "no_weight_decay_keywords"):
+            return self.encoder.no_weight_decay_keywords()
+        return set()
+
 
 def build_litemedsam(cfg):
+    """LiteMedSAM: TinyViT encoder (pretrained) + custom CNN decoder."""
     from tiny_vit_sam import TinyViT
 
     m = cfg["model"]
@@ -107,7 +141,7 @@ def build_litemedsam(cfg):
     ckpt_path = m.get("pretrained_checkpoint", "checkpoints/lite_medsam.pth")
     freeze_encoder_epochs = m.get("freeze_encoder_epochs", 0)
 
-    encoder = TinyViT(
+    tinyvit_kwargs = dict(
         img_size=256,
         in_chans=3,
         embed_dims=[64, 128, 160, 320],
@@ -122,6 +156,8 @@ def build_litemedsam(cfg):
         local_conv_size=3,
         layer_lr_decay=0.8,
     )
+    tinyvit_kwargs.update(m.get("tinyvit", {}))
+    encoder = TinyViT(**tinyvit_kwargs)
 
     if os.path.isfile(ckpt_path):
         ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=True)
@@ -144,6 +180,7 @@ def build_litemedsam(cfg):
 
 
 def build_deeplabv3plus(cfg):
+    """DeepLabV3+ (smp) with atrous spatial pyramid pooling."""
     m = cfg["model"]
     return smp.DeepLabV3Plus(
         encoder_name=m.get("encoder", "efficientnet-b0"),
@@ -155,6 +192,7 @@ def build_deeplabv3plus(cfg):
 
 
 def build_fpn(cfg):
+    """Feature Pyramid Network (smp) with multi-scale lateral connections."""
     m = cfg["model"]
     return smp.FPN(
         encoder_name=m.get("encoder", "efficientnet-b0"),
@@ -166,6 +204,7 @@ def build_fpn(cfg):
 
 
 def build_manet(cfg):
+    """MAnet (smp): U-Net with multi-scale attention in skip connections."""
     m = cfg["model"]
     return smp.MAnet(
         encoder_name=m.get("encoder", "efficientnet-b0"),
@@ -177,6 +216,7 @@ def build_manet(cfg):
 
 
 def freeze_encoder(model, freeze=True):
+    """Freeze/unfreeze the encoder of any supported model in-place."""
     if hasattr(model, 'segformer'):
         for param in model.segformer.encoder.parameters():
             param.requires_grad = not freeze
@@ -185,9 +225,12 @@ def freeze_encoder(model, freeze=True):
         for param in model.encoder.parameters():
             param.requires_grad = not freeze
         model._encoder_frozen = freeze
+    else:
+        raise ValueError(f"Model {type(model).__name__} has no freezeable encoder")
 
 
 def build_model(cfg):
+    """Model factory: reads cfg['model']['name'] and dispatches to a builder."""
     m = cfg["model"]
     model_type = m.get("name", "unet")
     

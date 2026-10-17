@@ -14,9 +14,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.checkpoint as checkpoint
-from timm.models.layers import DropPath as TimmDropPath,\
+from timm.layers import DropPath as TimmDropPath,\
     to_2tuple, trunc_normal_
-from timm.models.registry import register_model
 from typing import Tuple
 
 
@@ -133,6 +132,9 @@ class PatchMerging(nn.Module):
         self.act = activation()
         self.conv1 = Conv2d_BN(dim, out_dim, 1, 1, 0)
         stride_c=2
+        # NOTE: hardcoded for the embed_dims used by the LiteMedSAM/MobileSAM
+        # TinyViT variant ([64, 128, 160, 320, 448, 576] ...); other channel
+        # configs would silently get the wrong output stride.
         if(out_dim==320 or out_dim==448 or out_dim==576):
             stride_c=1
         self.conv2 = Conv2d_BN(out_dim, out_dim, 3, stride_c, 1, groups=out_dim)
@@ -509,6 +511,8 @@ class TinyViT(nn.Module):
         self.layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
             kwargs = dict(dim=embed_dims[i_layer],
+                        # NOTE: the i_layer-1 special case for the last stage
+                        # is specific to the 4-stage MobileSAM stride pattern.
                         input_resolution=(
                             patches_resolution[0] // (2 ** (i_layer-1 if i_layer == 3 else i_layer)),
                             patches_resolution[1] // (2 ** (i_layer-1 if i_layer == 3 else i_layer))
@@ -617,6 +621,8 @@ class TinyViT(nn.Module):
             x = layer(x)
 
         B, _, C = x.size()
+        # NOTE: 64x64 token grid is only valid for 256x256 inputs (stride-1
+        # 1x1 PatchEmbed); LiteMedSAMSeg always resizes inputs to 256x256.
         x = x.view(B, 64, 64, C)
         x = x.permute(0, 3, 1, 2)
         x = self.neck(x)
